@@ -1,0 +1,2664 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>个人效率工作台 & 全景书签导航 OS</title>
+
+  <!-- 动态 Favicon（优先加载同目录 logo.png，若无则使用默认闪电图标） -->
+  <link id="pageFavicon" rel="icon" href="logo.png" onerror="this.href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>'">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            darkBg: '#070a12',
+            darkCard: '#111726',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* ==========================================================
+       1. 动态主题色变量系统 (支持 5 种高定主题色实时切换)
+       ========================================================== */
+    :root {
+      --accent: #6366f1;
+      --accent-sec: #a855f7;
+      --accent-rgb: 99, 102, 241;
+    }
+    [data-accent="indigo"]  { --accent: #6366f1; --accent-sec: #a855f7; --accent-rgb: 99, 102, 241; }
+    [data-accent="violet"]  { --accent: #8b5cf6; --accent-sec: #ec4899; --accent-rgb: 139, 92, 246; }
+    [data-accent="cyan"]    { --accent: #06b6d4; --accent-sec: #3b82f6; --accent-rgb: 6, 182, 212; }
+    [data-accent="emerald"] { --accent: #10b981; --accent-sec: #06b6d4; --accent-rgb: 16, 185, 129; }
+    [data-accent="rose"]    { --accent: #f43f5e; --accent-sec: #f59e0b; --accent-rgb: 244, 63, 94; }
+
+    .theme-grad-bg { background: linear-gradient(135deg, var(--accent), var(--accent-sec)) !important; }
+    .theme-solid-bg { background-color: var(--accent) !important; }
+    .theme-text { color: var(--accent) !important; }
+    .theme-badge {
+      background-color: rgba(var(--accent-rgb), 0.14) !important;
+      color: var(--accent) !important;
+      border-color: rgba(var(--accent-rgb), 0.28) !important;
+    }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.24); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(var(--accent-rgb), 0.6); }
+
+    button:focus, select:focus { outline: none !important; box-shadow: none !important; }
+
+    .bg-dot-matrix {
+      background-image: radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .dark .bg-dot-matrix {
+      background-image: radial-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+    }
+
+    .specular-card {
+      position: relative;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(226, 232, 240, 0.95);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03), 0 8px 24px -4px rgba(15, 23, 42, 0.04);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+    }
+    .dark .specular-card {
+      background: rgba(17, 23, 38, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.075);
+      box-shadow: 0 8px 28px -4px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    /* ==========================================================
+       2. 五重书签微交互动效系统
+       ========================================================== */
+    .spotlight-card { position: relative; overflow: hidden; }
+    .spotlight-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 12%; right: 12%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.75), transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .spotlight-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(260px circle at var(--mouse-x, -200px) var(--mouse-y, -200px), rgba(var(--accent-rgb), 0.15), transparent 80%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      border-radius: inherit;
+      z-index: 1;
+    }
+    .spotlight-card:hover::before,
+    .spotlight-card:hover::after { opacity: 1; }
+
+    .bookmark-card:hover {
+      transform: translateY(-4px) scale(1.01);
+      box-shadow: 0 16px 32px -8px rgba(var(--accent-rgb), 0.22), 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+      border-color: rgba(var(--accent-rgb), 0.55) !important;
+    }
+    .bookmark-card:active { transform: translateY(-1px) scale(0.99); }
+
+    .icon-wrapper { position: relative; z-index: 2; }
+    .icon-wrapper::before {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-sec));
+      opacity: 0;
+      filter: blur(8px);
+      transform: scale(0.85);
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: -1;
+    }
+    .bookmark-card:hover .icon-wrapper::before { opacity: 0.65; transform: scale(1.12); }
+
+    .icon-container {
+      transition: transform 0.36s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .icon-container::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -120%;
+      width: 65%;
+      height: 200%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+      transform: rotate(35deg);
+      transition: left 0.55s ease;
+      pointer-events: none;
+    }
+    .bookmark-card:hover .icon-container {
+      transform: translateY(-2px) scale(1.12) rotate(-6deg);
+      box-shadow: 0 8px 20px -4px rgba(var(--accent-rgb), 0.45);
+      border-color: rgba(var(--accent-rgb), 0.5);
+    }
+    .bookmark-card:hover .icon-container::after { left: 150%; }
+
+    /* 超清图标渲染增强 */
+    .icon-img {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: high-quality;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+      transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .bookmark-card:hover .icon-img { transform: scale(1.1); }
+
+    .launch-arrow {
+      opacity: 0;
+      transform: translate(-4px, 4px);
+      transition: all 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .bookmark-card:hover .launch-arrow {
+      opacity: 1;
+      transform: translate(2px, -2px);
+      color: var(--accent);
+    }
+    .nav-btn:hover .nav-icon { transform: scale(1.22) rotate(-8deg); }
+    .nav-icon { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); display: inline-block; }
+
+    .search-box-wrap { transition: border-color 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease; }
+    .search-box-wrap:focus-within {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18), 0 8px 20px -4px rgba(var(--accent-rgb), 0.14);
+    }
+
+    @keyframes colonBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .colon-blink { animation: colonBlink 1s infinite; }
+
+    @keyframes toastSlideUp {
+      from { opacity: 0; transform: translateY(14px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .toast-animate { animation: toastSlideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  </style>
+</head>
+<body data-accent="indigo" class="bg-slate-100/85 text-slate-800 dark:bg-darkBg dark:text-slate-100 min-h-screen flex flex-col transition-colors duration-300 font-sans bg-dot-matrix relative selection:bg-indigo-500 selection:text-white overflow-x-hidden">
+
+  <!-- 环境极光背景光晕 -->
+  <div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden" aria-hidden="true">
+    <div class="absolute -top-32 -left-32 w-[540px] h-[540px] bg-indigo-500/12 dark:bg-indigo-600/15 rounded-full blur-[130px]"></div>
+    <div class="absolute top-1/4 -right-28 w-[500px] h-[500px] bg-purple-500/10 dark:bg-purple-600/14 rounded-full blur-[130px]"></div>
+    <div class="absolute bottom-0 left-1/3 w-[600px] h-[400px] bg-cyan-500/8 dark:bg-cyan-500/10 rounded-full blur-[140px]"></div>
+  </div>
+
+  <!-- ==================== 全景主座舱容器 ==================== -->
+  <div class="flex-1 w-full max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-6 py-4 lg:py-5 flex flex-col lg:flex-row gap-5 items-start">
+
+    <!-- =========================================================================
+         左栏：模块化导航与系统控制坞 (固定高度，独立分类目录，系统控制沉底)
+         ========================================================================= -->
+    <aside class="w-full lg:w-[276px] shrink-0 lg:sticky lg:top-5 flex flex-col gap-3.5 lg:h-[calc(100vh-2.5rem)]">
+      
+      <!-- 1. 顶部品牌 Header（自定义图标已缩小一半为 w-5 h-5 居中展示） -->
+      <div class="specular-card rounded-2xl p-3.5 shrink-0">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-3 cursor-pointer group" onclick="handleBrandLogoClick(event)">
+            <div class="relative w-10 h-10 rounded-xl theme-grad-bg flex items-center justify-center text-white font-bold text-lg shadow-md ring-1 ring-white/25 transition-transform duration-300 group-hover:scale-105 overflow-hidden">
+              <img
+                id="brandLogoImg"
+                src="logo.png"
+                alt="Logo"
+                class="w-5 h-5 object-contain hidden"
+                onload="this.classList.remove('hidden');document.getElementById('brandLogoFallback').classList.add('hidden');"
+                onerror="handleBrandLogoError(this)"
+              >
+              <span id="brandLogoFallback">⚡</span>
+              <div id="brandLogoEditOverlay" class="hidden absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] font-bold text-white">
+                📷换标
+              </div>
+            </div>
+            <input type="file" id="brandLogoInput" accept="image/*" class="hidden" onchange="handleBrandLogoUpload(event)">
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h1 class="font-extrabold text-[15px] tracking-tight text-slate-800 dark:text-white">效率工作台</h1>
+                <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border theme-badge">PRO</span>
+              </div>
+              <p class="text-[11px] text-slate-400 dark:text-slate-500">Creator & Dev OS</p>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60" title="将图标命名为 logo.png 放入根目录即可自动替换左上角图标">v6.2</span>
+        </div>
+      </div>
+
+      <!-- 2. 多功能模块矩阵 -->
+      <div class="specular-card rounded-2xl p-3 shrink-0">
+        <div class="flex items-center justify-between px-1.5 pb-2">
+          <span class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">功能模块空间</span>
+          <span class="text-[10px] font-mono theme-text">5 独立空间</span>
+        </div>
+        <div class="grid grid-cols-5 lg:grid-cols-2 gap-1.5" id="moduleSwitcher">
+          <button type="button" onclick="switchAppModule('bookmarks', 'all')" data-mod="bookmarks" class="mod-btn col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all theme-grad-bg text-white shadow-sm">
+            <span class="flex items-center gap-2"><span>🧭</span><span>网址导航全集</span></span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/20" id="modBookmarkCount">178</span>
+          </button>
+          <button type="button" onclick="switchAppModule('Cinema', 'all')" data-mod="Cinema" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🎬</span><span class="truncate">影视专区</span>
+          </button>
+          <button type="button" onclick="switchAppModule('Music', 'all')" data-mod="Music" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🎵</span><span class="truncate">音乐电台</span>
+          </button>
+          <button type="button" onclick="switchAppModule('Toolbox', 'all')" data-mod="Toolbox" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🛠️</span><span class="truncate">工具箱</span>
+          </button>
+          <button type="button" onclick="switchAppModule('Software', 'all')" data-mod="Software" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>📦</span><span class="truncate">软件库</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. 中部可滚动：当前模块的独立分类目录 -->
+      <div class="specular-card rounded-2xl p-3 flex-1 flex flex-col min-h-0">
+        <div class="px-1.5 py-1 flex justify-between items-center shrink-0">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span id="sidebarCatHeaderTitle" class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">导航分类目录</span>
+            <span id="totalCountBadge" class="theme-badge border font-mono font-bold px-1.5 py-0.2 rounded-full text-[10px]">0</span>
+          </div>
+          <button type="button" onclick="promptAddCategory()" title="在当前模块下新建分类" class="px-2 py-0.5 rounded-lg text-[11px] font-bold theme-badge border hover:opacity-85 transition flex items-center gap-0.5 shrink-0">
+            <span>＋</span><span>添加分类</span>
+          </button>
+        </div>
+        <nav id="categoryNav" class="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-y-auto pb-1 lg:pb-0 mt-1.5 pr-0.5 flex-1">
+          <!-- 动态渲染当前模块专属分类 -->
+        </nav>
+      </div>
+
+      <!-- 4. 最底部（mt-auto 固定沉底）：系统控制与一键写入 index.html -->
+      <div class="specular-card rounded-2xl p-3.5 shrink-0 mt-auto">
+        <div class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-0.5 mb-2.5 flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <span id="editStatusDot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+            <span>系统控制与管理</span>
+          </span>
+          <span class="text-[10px] font-mono theme-text">GitHub Ready</span>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" onclick="openBookmarkModal()" class="px-3 py-2 rounded-xl theme-grad-bg text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-95">
+            <span class="text-sm leading-none">＋</span> 新增书签
+          </button>
+          <button type="button" id="editModeBtn" onclick="toggleEditMode()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border border-slate-200/70 dark:border-slate-700/70">
+            <span>⚙️</span> <span id="editModeText">管理模式</span>
+          </button>
+        </div>
+
+        <!-- 一键直接保存替换 index.html 按钮 -->
+        <button type="button" onclick="saveDirectlyToIndexHtml()" title="直接将当前所有修改写入并替换硬盘上的 index.html 文件，无需手动改代码即可直接提交 GitHub" class="w-full mt-2 py-2 px-3 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
+          <span>💾</span> <span>一键写入更新 index.html</span>
+        </button>
+
+        <div class="grid grid-cols-3 gap-1.5 pt-2 mt-2 border-t border-slate-200/60 dark:border-slate-800/80">
+          <button type="button" onclick="exportData()" title="导出 JSON 备份文件" class="py-1.5 px-1 rounded-lg bg-slate-100/80 hover:bg-indigo-500/10 dark:bg-slate-800/60 text-[11px] font-medium flex items-center justify-center gap-0.5 transition">
+            <span>📤</span> 备份
+          </button>
+          <label title="从 JSON 文件恢复书签" class="py-1.5 px-1 rounded-lg bg-slate-100/80 hover:bg-indigo-500/10 dark:bg-slate-800/60 text-[11px] font-medium flex items-center justify-center gap-0.5 transition cursor-pointer">
+            <span>📥</span> 恢复
+            <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
+          </label>
+          <button type="button" onclick="resetDefaultData()" title="重置回初始书签数据并修复全部图标" class="py-1.5 px-1 rounded-lg bg-slate-100/80 hover:bg-rose-500/10 hover:text-rose-500 dark:bg-slate-800/60 text-[11px] font-medium flex items-center justify-center gap-0.5 transition">
+            <span>🔄</span> 重置
+          </button>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- =========================================================================
+         右侧主工作区：顶部全宽搜索框 + 下方（中栏内容矩阵 + 右侧实时状态舱同水平线对齐）
+         ========================================================================= -->
+    <div class="flex-1 min-w-0 w-full flex flex-col gap-5">
+
+      <!-- 1. 顶部全宽贯穿式搜索舱（右上角纯图标：🎨 主题颜色 > ☀️/🌙 深浅色 > 🕒 最近访问） -->
+      <section class="specular-card rounded-3xl p-5 sm:px-7 sm:py-6 relative w-full z-30">
+        <div class="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
+          <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-[520px] h-32 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-500/20 blur-3xl"></div>
+        </div>
+
+        <!-- 搜索框模块右上角：纯图标按钮 -->
+        <div class="flex items-center justify-end gap-2 mb-2 relative z-30">
+          <!-- 1. 主题颜色图标 + 弹出 5 色调色盘 -->
+          <div class="relative">
+            <button type="button" onclick="toggleAccentPopover(event)" title="切换主题颜色" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/90 dark:hover:bg-slate-700/80 flex items-center justify-center text-sm border border-slate-200/80 dark:border-slate-700/70 transition-all hover:scale-105 active:scale-95">
+              🎨
+            </button>
+            <div id="accentColorPopover" onclick="event.stopPropagation()" class="hidden absolute right-0 mt-2 p-2.5 specular-card rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-2.5 z-50">
+              <button type="button" onclick="setAccentColor('indigo')" data-color="indigo" class="accent-dot w-5 h-5 rounded-full bg-indigo-500 transition-transform hover:scale-125" title="极光靛蓝"></button>
+              <button type="button" onclick="setAccentColor('violet')" data-color="violet" class="accent-dot w-5 h-5 rounded-full bg-violet-500 transition-transform hover:scale-125" title="赛博紫罗兰"></button>
+              <button type="button" onclick="setAccentColor('cyan')" data-color="cyan" class="accent-dot w-5 h-5 rounded-full bg-cyan-500 transition-transform hover:scale-125" title="深海青碧"></button>
+              <button type="button" onclick="setAccentColor('emerald')" data-color="emerald" class="accent-dot w-5 h-5 rounded-full bg-emerald-500 transition-transform hover:scale-125" title="翡翠森绿"></button>
+              <button type="button" onclick="setAccentColor('rose')" data-color="rose" class="accent-dot w-5 h-5 rounded-full bg-rose-500 transition-transform hover:scale-125" title="落日绯红"></button>
+            </div>
+          </div>
+
+          <!-- 2. 深浅色模式切换图标 -->
+          <button type="button" onclick="toggleTheme()" id="themeBtn" title="切换深色/浅色外观模式" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/90 dark:hover:bg-slate-700/80 flex items-center justify-center text-sm border border-slate-200/80 dark:border-slate-700/70 transition-all hover:scale-105 active:scale-95">
+            ☀️
+          </button>
+
+          <!-- 3. 最近访问纯图标按钮 -->
+          <div class="relative">
+            <button type="button" onclick="toggleRecentPopover(event)" title="最近访问足迹" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/90 dark:hover:bg-slate-700/80 flex items-center justify-center text-sm border border-slate-200/80 dark:border-slate-700/70 transition-all hover:scale-105 active:scale-95">
+              🕒
+            </button>
+
+            <!-- 最近访问浮层列表 -->
+            <div id="recentVisitsPopover" onclick="event.stopPropagation()" class="hidden absolute right-0 mt-2 w-[320px] sm:w-[360px] specular-card rounded-2xl p-3.5 shadow-2xl border border-slate-200 dark:border-slate-700 z-50">
+              <div class="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-200/70 dark:border-slate-700/70">
+                <span class="text-xs font-extrabold flex items-center gap-1.5">
+                  <span>🕒</span><span>最近访问足迹</span>
+                </span>
+                <div class="flex items-center gap-2">
+                  <button type="button" onclick="clearAllHistory()" class="text-[11px] font-semibold text-rose-500 hover:text-rose-400 px-2 py-0.5 rounded-lg hover:bg-rose-500/10 transition">清空全部</button>
+                  <button type="button" onclick="closeRecentPopover()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs px-1">✕</button>
+                </div>
+              </div>
+              <div id="recentVisitsList" class="max-h-72 overflow-y-auto space-y-1.5 pr-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="max-w-4xl mx-auto relative z-10">
+          <!-- 搜索引擎切换胶囊（顺序：站内书签 > Google > Bing > GitHub > B站） -->
+          <div class="flex items-center justify-center gap-1.5 sm:gap-2 mb-3.5 text-xs sm:text-[13px] flex-wrap" id="searchEngineTabs">
+            <button type="button" onclick="setSearchEngine('local')" data-engine="local" class="engine-tab px-3.5 py-1.5 rounded-full font-semibold theme-solid-bg text-white shadow-sm transition-all flex items-center gap-1.5">
+              <span>🔍</span> <span>站内书签</span>
+            </button>
+            <button type="button" onclick="setSearchEngine('google')" data-engine="google" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
+              <span>🌍</span> <span>Google</span>
+            </button>
+            <button type="button" onclick="setSearchEngine('bing')" data-engine="bing" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
+              <span>💠</span> <span>Bing</span>
+            </button>
+            <button type="button" onclick="setSearchEngine('github')" data-engine="github" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
+              <span>🐙</span> <span>GitHub</span>
+            </button>
+            <button type="button" onclick="setSearchEngine('bilibili')" data-engine="bilibili" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
+              <span>📺</span> <span>B站</span>
+            </button>
+          </div>
+
+          <!-- 搜索主输入框 -->
+          <form onsubmit="handleSearchSubmit(event)" class="relative">
+            <div class="search-box-wrap flex items-center w-full rounded-2xl bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-700/80 pl-4 pr-2 py-1.5">
+              <span class="text-slate-400 mr-2.5 text-base select-none">🔎</span>
+              <input
+                type="text"
+                id="searchInput"
+                oninput="handleSearchInput(this.value)"
+                placeholder="输入关键词实时检索书签名称、完整功能描述或网址（按 Ctrl+K 快速聚焦）..."
+                class="w-full py-2 bg-transparent text-sm sm:text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
+              >
+              <div class="flex items-center gap-1.5 shrink-0 ml-2">
+                <button type="button" id="clearSearchBtn" onclick="clearSearch()" class="hidden w-7 h-7 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs flex items-center justify-center transition">✕</button>
+                <kbd class="hidden sm:inline-block text-[11px] font-mono text-slate-400 dark:text-slate-500 bg-slate-200/70 dark:bg-slate-800 border border-slate-300/60 dark:border-slate-700 px-2 py-1 rounded-lg">Ctrl K</kbd>
+                <button type="submit" id="searchSubmitBtn" class="px-5 py-2 rounded-xl theme-solid-bg hover:opacity-90 active:scale-95 text-white text-xs sm:text-sm font-semibold transition-all shadow-sm">
+                  筛选
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <!-- 热门标签快筛栏 -->
+          <div class="flex items-center justify-between flex-wrap gap-2 mt-3 px-1 text-xs text-slate-400">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[11px] font-semibold text-slate-400 mr-1">🔥 热门快筛:</span>
+              <button type="button" onclick="quickFilterTag('UE5')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">🎮 UE5</button>
+              <button type="button" onclick="quickFilterTag('ComfyUI')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">⚡ ComfyUI</button>
+              <button type="button" onclick="quickFilterTag('FLUX')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">🎨 FLUX</button>
+              <button type="button" onclick="quickFilterTag('HDRI')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">🌍 HDRI</button>
+              <button type="button" onclick="quickFilterTag('3D')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">🧊 3D资产</button>
+              <button type="button" onclick="quickFilterTag('抠图')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">✂️ 抠图去背</button>
+              <button type="button" onclick="quickFilterTag('无损音乐')" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 transition border border-slate-200/60 dark:border-slate-700/60">🎵 无损音乐</button>
+            </div>
+            <div id="currentViewBadge" class="text-[11px] font-mono text-slate-400 hidden sm:block">当前视图：网址导航全集</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 搜索框下方区域：恢复与搜索框的呼吸间距 mt-2.5，且右栏下移 46px 与工具卡片框顶部完全齐平 -->
+      <div class="flex flex-col lg:flex-row gap-5 items-start w-full mt-2.5">
+        
+        <!-- 中栏：书签与功能模块展示台 -->
+        <main class="flex-1 min-w-0 w-full pb-16">
+          <div id="editModeBanner" class="hidden mb-5 specular-card rounded-2xl p-3.5 border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/10 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              <span class="text-base">⚙️</span>
+              <span>【管理模式已开启】：1. 卡片下方可编辑/删除书签；2. 点击左上角图标可上传更换自定义 Logo；3. 改完后点击左下角「💾 一键写入更新 index.html」可直接保存替换源码文件。</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="saveDirectlyToIndexHtml()" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shrink-0 transition">💾 直接保存至 index.html</button>
+              <button type="button" onclick="toggleEditMode()" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold shrink-0 transition">完成并退出</button>
+            </div>
+          </div>
+
+          <div id="mainContent" class="space-y-8"></div>
+        </main>
+
+        <!-- 右栏：实时状态资讯舱（lg:mt-[46px] 刚好跳过左侧分类标题行，使时钟卡片框与时间戳卡片框顶部 100% 水平对齐） -->
+        <aside class="w-full lg:w-[292px] shrink-0 lg:sticky lg:top-5 flex flex-col gap-4 lg:mt-[46px]">
+          
+          <!-- 组件 1：本地实时时钟面板 -->
+          <div class="specular-card spotlight-card rounded-2xl p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[11px] font-bold uppercase tracking-wider theme-text flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                LOCAL TELEMETRY
+              </span>
+              <span id="timeGreeting" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">☀️ 工作中</span>
+            </div>
+            <div class="my-2 flex items-baseline gap-1 font-mono tracking-tight">
+              <span id="clockHM" class="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white tabular-nums">00:00</span>
+              <span class="text-lg font-bold theme-text colon-blink">:</span>
+              <span id="clockSec" class="text-xl font-bold theme-text tabular-nums">00</span>
+            </div>
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-800/80">
+              <span id="clockDate" class="font-medium">--年--月--日</span>
+              <span id="clockWeekday" class="font-semibold text-slate-700 dark:text-slate-300">星期-</span>
+            </div>
+          </div>
+
+          <!-- 组件 2：Open-Meteo 实时天气与温度 -->
+          <div class="specular-card spotlight-card rounded-2xl p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">实时天气</span>
+                <span id="weatherCityBadge" class="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">定位中...</span>
+              </div>
+              <select id="citySelector" onchange="changeWeatherCity(this.value)" class="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg px-1.5 py-1 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                <option value="auto">📍 自动定位</option>
+                <option value="39.9042,116.4074,北京">北京</option>
+                <option value="31.2304,121.4737,上海">上海</option>
+                <option value="23.1291,113.2644,广州">广州</option>
+                <option value="22.5431,114.0579,深圳">深圳</option>
+                <option value="30.2741,120.1551,杭州">杭州</option>
+                <option value="30.5728,104.0668,成都">成都</option>
+                <option value="35.6762,139.6503,东京">东京</option>
+              </select>
+            </div>
+
+            <div class="flex items-center justify-between my-2">
+              <div class="flex items-center gap-3">
+                <div id="weatherIcon" class="text-4xl filter drop-shadow-sm">⛅</div>
+                <div>
+                  <div class="flex items-start">
+                    <span id="weatherTemp" class="text-3xl font-extrabold font-mono tabular-nums text-slate-800 dark:text-white">--</span>
+                    <span class="text-sm font-bold theme-text mt-1">°C</span>
+                  </div>
+                  <div id="weatherDesc" class="text-xs font-semibold text-slate-500 dark:text-slate-400">正在同步气象数据...</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5 pt-2.5 mt-1 border-t border-slate-200/60 dark:border-slate-800/80 text-[11px] text-center">
+              <div class="bg-slate-100/70 dark:bg-slate-800/50 rounded-lg py-1 px-1.5">
+                <div class="text-slate-400">体感</div>
+                <div id="weatherFeels" class="font-mono font-bold text-slate-700 dark:text-slate-200">--°</div>
+              </div>
+              <div class="bg-slate-100/70 dark:bg-slate-800/50 rounded-lg py-1 px-1.5">
+                <div class="text-slate-400">湿度</div>
+                <div id="weatherHumid" class="font-mono font-bold text-cyan-500">--%</div>
+              </div>
+              <div class="bg-slate-100/70 dark:bg-slate-800/50 rounded-lg py-1 px-1.5">
+                <div class="text-slate-400">风速</div>
+                <div id="weatherWind" class="font-mono font-bold text-emerald-500">--km/h</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 组件 3：春节秒级倒计时卡片 -->
+          <div class="specular-card spotlight-card rounded-2xl p-4 relative overflow-hidden border-rose-500/20 dark:border-rose-500/25">
+            <div class="absolute -right-10 -bottom-10 w-36 h-36 bg-gradient-to-br from-rose-500/20 to-amber-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+            <div class="flex items-center justify-between mb-2.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-base">🧨</span>
+                <span id="cnyTitle" class="text-xs font-extrabold bg-gradient-to-r from-rose-500 to-amber-500 bg-clip-text text-transparent">春节倒计时</span>
+              </div>
+              <span id="cnyTargetDate" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20">农历正月初一</span>
+            </div>
+
+            <div class="grid grid-cols-4 gap-1.5 my-2 text-center">
+              <div class="bg-gradient-to-b from-rose-500/10 to-transparent dark:from-rose-500/15 border border-rose-500/20 rounded-xl py-2 px-1">
+                <div id="cnyDays" class="text-xl font-extrabold font-mono tabular-nums text-rose-500 dark:text-rose-400">000</div>
+                <div class="text-[10px] text-slate-400 font-medium mt-0.5">天</div>
+              </div>
+              <div class="bg-slate-100/80 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 rounded-xl py-2 px-1">
+                <div id="cnyHours" class="text-xl font-extrabold font-mono tabular-nums text-slate-800 dark:text-slate-100">00</div>
+                <div class="text-[10px] text-slate-400 font-medium mt-0.5">时</div>
+              </div>
+              <div class="bg-slate-100/80 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 rounded-xl py-2 px-1">
+                <div id="cnyMinutes" class="text-xl font-extrabold font-mono tabular-nums text-slate-800 dark:text-slate-100">00</div>
+                <div class="text-[10px] text-slate-400 font-medium mt-0.5">分</div>
+              </div>
+              <div class="bg-slate-100/80 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 rounded-xl py-2 px-1">
+                <div id="cnySeconds" class="text-xl font-extrabold font-mono tabular-nums text-amber-500">00</div>
+                <div class="text-[10px] text-slate-400 font-medium mt-0.5">秒</div>
+              </div>
+            </div>
+
+            <div class="mt-3 space-y-1">
+              <div class="flex justify-between text-[11px] text-slate-400">
+                <span>距离新春团圆</span>
+                <span id="cnyProgressText" class="font-mono text-rose-400 font-semibold">实时同步中</span>
+              </div>
+              <div class="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div id="cnyProgressBar" class="h-full bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 rounded-full transition-all duration-500" style="width: 75%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 组件 4：灵感便签 / 随手备忘录 -->
+          <div class="specular-card spotlight-card rounded-2xl p-4 relative overflow-hidden border-amber-500/20">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm">📝</span>
+                <span class="text-xs font-extrabold text-slate-700 dark:text-slate-200">灵感便签 · 备忘录</span>
+              </div>
+              <span id="memoSaveStatus" class="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">实时自动保存</span>
+            </div>
+
+            <textarea
+              id="quickMemoArea"
+              oninput="handleMemoInput(this.value)"
+              rows="5"
+              placeholder="在此随手记录今日待办、UE5 参数、Prompt 提示词或临时灵感（打字自动保存至本地，刷新不丢失）..."
+              class="w-full p-2.5 rounded-xl bg-amber-50/50 dark:bg-slate-900/80 border border-amber-200/70 dark:border-slate-700/80 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 leading-relaxed focus:outline-none focus:border-amber-400 transition resize-y relative z-10"
+            ></textarea>
+
+            <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 text-[11px] relative z-10">
+              <span id="memoCharCount" class="font-mono text-slate-400">0 字</span>
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="insertMemoTimestamp()" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium transition" title="插入当前时间">+时间</button>
+                <button type="button" onclick="copyMemoContent()" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-500 hover:text-white dark:bg-slate-800 dark:hover:bg-indigo-600 text-slate-600 dark:text-slate-300 font-medium transition">复制</button>
+                <button type="button" onclick="clearMemoContent()" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-500 hover:text-white dark:bg-slate-800 dark:hover:bg-rose-600 text-slate-500 dark:text-slate-400 font-medium transition">清空</button>
+              </div>
+            </div>
+          </div>
+
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 右下角：一键回到最顶端悬浮按钮 ==================== -->
+  <button
+    type="button"
+    id="backToTopBtn"
+    onclick="scrollToTop()"
+    title="回到页面最顶端"
+    class="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-2xl specular-card theme-grad-bg text-white shadow-xl flex items-center justify-center text-base font-bold opacity-0 pointer-events-none translate-y-4 transition-all duration-300 hover:scale-110 active:scale-95"
+  >
+    ↑
+  </button>
+
+  <!-- ==================== 新增/编辑书签 弹窗 (Modal) ==================== -->
+  <div id="bookmarkModal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="specular-card rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="modalTitle" class="text-lg font-bold">新增书签</h3>
+        <button type="button" onclick="closeBookmarkModal()" class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">✕</button>
+      </div>
+      <form onsubmit="saveBookmark(event)" class="space-y-3.5">
+        <input type="hidden" id="bmId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">所属功能模块 *</label>
+          <select id="bmModuleSelect" onchange="populateModalCategories(this.value)" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition">
+            <option value="bookmarks">🧭 网址导航全集</option>
+            <option value="Cinema">🎬 影视专区</option>
+            <option value="Music">🎵 音乐电台</option>
+            <option value="Toolbox">🛠️ 工具箱</option>
+            <option value="Software">📦 软件库</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">所属分类目录 *</label>
+          <div class="flex gap-2">
+            <select id="bmCategory" class="flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition"></select>
+            <input type="text" id="bmNewCategory" placeholder="或输入新分类" class="w-32 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">网站名称 *</label>
+          <input type="text" id="bmTitle" required placeholder="例如：Civitai 模型站" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">网址链接 (URL) *</label>
+          <input type="url" id="bmUrl" required placeholder="https://..." class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">完整功能描述（卡片将完整展示此说明）*</label>
+          <textarea id="bmDesc" rows="2" placeholder="详细描述该网站的功能用途，一目了然知道是干嘛的" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">自定义图标地址 / Base64（选填，留空自动匹配高清图标）</label>
+          <input type="text" id="bmCustomIcon" placeholder="可填入图标 URL 或 data:image/... 留空则自动匹配" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-xs font-mono focus:outline-none focus:border-indigo-500 transition">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeBookmarkModal()" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700/60 text-xs sm:text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition">取消</button>
+          <button type="submit" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs sm:text-sm font-semibold shadow-md transition">保存书签</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== 内置小工具运行弹窗 (Tool Modal) ==================== -->
+  <div id="toolModal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="specular-card rounded-2xl max-w-2xl w-full p-6 shadow-2xl max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-700">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-200 dark:border-slate-700">
+        <h3 id="toolModalTitle" class="text-lg font-bold flex items-center gap-2">🛠️ 本地工具</h3>
+        <button type="button" onclick="closeToolModal()" class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-base transition">✕</button>
+      </div>
+      <div id="toolModalBody" class="py-4 overflow-y-auto flex-1 space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- Toast 消息浮层 -->
+  <div id="toastContainer" class="fixed bottom-20 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- 预加载 js/bookmarks-data.js 原生离线 Base64 图标库 -->
+  <script src="js/bookmarks-data.js" onerror="this.remove()"></script>
+  <script src="bookmarks-data.js" onerror="this.remove()"></script>
+
+  <!-- ==================== 核心逻辑脚本 ==================== -->
+  <script>
+    // 1. 内置本地效率小工具
+    const BUILTIN_TOOLS = [
+      { id: 'tool-json', title: 'JSON 格式化 / 压缩校验', desc: '纯浏览器本地校验、美化缩进与单行压缩 JSON 数据，支持一键复制结果', icon: '📋', type: 'json' },
+      { id: 'tool-text', title: '字数统计 & 文本按行去重', desc: '实时统计总字符、中文字数、英文单词与行数，支持一键按行去重与清理空行', icon: '📝', type: 'text' },
+      { id: 'tool-radius', title: '本地图片圆角合成器', desc: '基于 HTML5 Canvas 纯本地处理图片圆角并导出透明 PNG，零上传保护隐私', icon: '🖼️', type: 'radius' },
+      { id: 'tool-time', title: '时间戳 & UE5 材质颜色转换', desc: 'Unix 时间戳互转、HEX 转 RGB 及 UE5 Material 线性浮点 (0.0~1.0) 颜色换算', icon: '⏱️', type: 'time' }
+    ];
+
+    // 2. 官方原版矢量 SVG 图标字典（100% 官方品牌矢量路径，4K 屏下极致锐利）
+    const OFFICIAL_BRAND_SVGS = {
+     'bilibili.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2300AEEC"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>`,
+      'youtube.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+      'github.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`,
+      'pinterest.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23E60023"><path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z"/></svg>`,
+      'discord.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%235865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>`,
+      'figma.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23F24E1E" d="M8 24c2.208 0 4-1.792 4-4v-4H8c-2.208 0-4 1.792-4 4s1.792 4 4 4z"/><path fill="%23A259FF" d="M4 12c0-2.208 1.792-4 4-4h4v8H8c-2.208 0-4-1.792-4-4z"/><path fill="%23F24E1E" d="M4 4c0-2.208 1.792-4 4-4h4v8H8C5.792 8 4 6.208 4 4z"/><path fill="%23FF7262" d="M12 0h4c2.208 0 4 1.792 4 4s-1.792 4-4 4h-4V0z"/><path fill="%231ABCFE" d="M20 12c0 2.208-1.792 4-4 4s-4-1.792-4-4 1.792-4 4-4 4 1.792 4 4z"/></svg>`,
+      'chatgpt.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2310A37F"><path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/></svg>`,
+      'gemini.google.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%234facfe"/><stop offset="50%" stop-color="%23a18cd1"/><stop offset="100%" stop-color="%23fbc2eb"/></linearGradient></defs><path fill="url(%23g)" d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z"/></svg>`,
+      'vercel.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M24 22.525H0l12-21.05 12 21.05z"/></svg>`,
+      'cloudflare.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23F38020"><path d="M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1338-.0713c-.0283-.042-.0351-.0986-.0146-.1553.0273-.084.1123-.1484.2031-.1553l8.7354-.1123c1.0351-.0498 2.1601-.8867 2.5537-1.9131l.499-1.3018c.0215-.0566.0293-.1123.0147-.168-.5625-2.5468-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6289 1.6172-5.3876 3.8614-.4922-.3653-1.1182-.5625-1.794-.499-1.2021.1191-2.166 1.083-2.2861 2.2851-.0283.3096.0068.6123.0918.8946C1.5684 13.0469 0 14.6572 0 16.6523c0 .1748.0146.3516.0352.5274.0146.084.084.1475.1689.1475h15.9815c.0908 0 .1758-.0635.2031-.1553l.1201-.3272z"/></svg>`,
+      'artstation.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2313AFF0"><path d="M0 17.723l2.027 3.505h.001a2.424 2.424 0 0 0 2.164 1.333h13.457l-2.792-4.838H0zm24 .025c0-.484-.143-.935-.388-1.314L15.728 2.728a2.424 2.424 0 0 0-2.142-1.289H9.419L21.598 22.54l1.92-3.325c.378-.637.482-.919.482-1.467zm-11.129-3.462L7.428 4.858l-5.444 9.428h10.887z"/></svg>`
+    };
+
+    // 3. 源码级持久化数据区（当点击「💾 一键写入更新 index.html」时，程序会自动更新此区块）
+    /*__SYNC_DATA_START__*/
+    const DATA_VERSION = 1776000002;
+    const INITIAL_CUSTOM_LOGO = "";
+    const INITIAL_CUSTOM_CATS = { "bookmarks": [], "Cinema": [], "Music": [], "Toolbox": [], "Software": [] };
+    const INITIAL_BOOKMARKS = [
+      // ==================== 🔥 高频工作台 & 社区 ====================
+      { "id": "b1", "category": "🔥 高频工作台 & 社区", "title": "哔哩哔哩 Bilibili", "url": "https://www.bilibili.com/", "desc": "国内核心弹幕视频与 CG / AI / UE5 教程学习社区" },
+      { "id": "b2", "category": "🔥 高频工作台 & 社区", "title": "YouTube", "url": "https://youtube.com/", "desc": "全球最大的视频与海外官方 CG、虚幻引擎教程平台" },
+      { "id": "b3", "category": "🔥 高频工作台 & 社区", "title": "Pinterest 视觉灵感库", "url": "https://www.pinterest.com/", "desc": "全球设计师必备的视觉灵感、原画设定与美术参考瀑布流" },
+      { "id": "b4", "category": "🔥 高频工作台 & 社区", "title": "ArtStation 殿堂级艺术社区", "url": "https://www.artstation.com/?sort_by=community", "desc": "全球顶尖游戏美术、概念设计、UE5 场景与 VFX 作品展示社区" },
+      { "id": "b5", "category": "🔥 高频工作台 & 社区", "title": "Figma 协同设计工作台", "url": "https://www.figma.com/files/team/1619233891932982176/recents-and-sharing/recently-viewed?fuid=1619233890512923355", "desc": "在线 UI/UX 界面设计、原型制作与团队白板协作画布" },
+      { "id": "b6", "category": "🔥 高频工作台 & 社区", "title": "Discord 创作者交流频道", "url": "https://discord.com/channels/662267976984297473/952771221915840552", "desc": "Midjourney 生图、AI 开源项目与海外创作者实时交流社区" },
+      { "id": "b7", "category": "🔥 高频工作台 & 社区", "title": "LINUX DO 技术与资源社区", "url": "https://linux.do/c/softwares/14", "desc": "高质量中文 AI 前沿技术、开源工具、API 与软件资源论坛" },
+      { "id": "b8", "category": "🔥 高频工作台 & 社区", "title": "CSDN 开发者技术社区", "url": "https://www.csdn.net/", "desc": "中文 IT 编程技术博客、报错排查与开发经验检索平台" },
+      { "id": "b9", "category": "🔥 高频工作台 & 社区", "title": "DeepL 神经网络精准翻译", "url": "https://www.deepl.com/zh/translator", "desc": "高准确度多语言在线文献、技术文档与提示词互译工具" },
+      { "id": "b10", "category": "🔥 高频工作台 & 社区", "title": "新片场 - LiangLiang 作品集", "url": "https://www.xinpianchang.com/u14004225", "desc": "LiangLiang 个人影视后期与 CG 视觉视频作品集展示主页" },
+      { "id": "b11", "category": "🔥 高频工作台 & 社区", "title": "我的任务 - ftrack 制片管线", "url": "https://f.hzpipeline.com/#itemId=home", "desc": "团队内部 CG 制片管理、镜头审核与个人任务进度追踪平台" },
+      { "id": "b12", "category": "🔥 高频工作台 & 社区", "title": "HORIZON WIKI 团队知识库", "url": "http://wiki.hzpipeline.com/zh/home", "desc": "团队内部入职引导、制作规范与技术流程 Wiki 文档中心" },
+
+      // ==================== 🤖 AI 对话 & 深度搜索 ====================
+      { "id": "a1", "category": "🤖 AI 对话 & 深度搜索", "title": "ChatGPT (OpenAI)", "url": "https://chatgpt.com/", "desc": "OpenAI 旗舰级对话大模型，支持代码编写、逻辑推理与多模态分析" },
+      { "id": "a2", "category": "🤖 AI 对话 & 深度搜索", "title": "Google Gemini", "url": "https://gemini.google.com/app", "desc": "Google 原生超长上下文多模态 AI 助手，擅长复杂项目分析与创作" },
+      { "id": "a3", "category": "🤖 AI 对话 & 深度搜索", "title": "Kimi 智能助手", "url": "https://www.kimi.com/", "desc": "月之暗面出品，擅长超长文档解析、联网搜索与深度思考的 AI 助手" },
+      { "id": "a4", "category": "🤖 AI 对话 & 深度搜索", "title": "Perplexity AI 深度搜索", "url": "https://www.perplexity.ai/", "desc": "AI 驱动的实时学术与全网深度搜索引擎，自动附带真实信源引用" },
+      { "id": "a5", "category": "🤖 AI 对话 & 深度搜索", "title": "SiliconCloud 硅基流动", "url": "https://cloud.siliconflow.cn/models", "desc": "高性价比一站式开源大模型 API 调用（DeepSeek/Qwen/FLUX）与推理云平台" },
+      { "id": "a6", "category": "🤖 AI 对话 & 深度搜索", "title": "Coze 扣子 AI 智能体探索", "url": "https://www.coze.com/explore", "desc": "新一代 AI Bot 智能体搭建、插件工作流编排与创意应用商店" },
+      { "id": "a7", "category": "🤖 AI 对话 & 深度搜索", "title": "Merlin AI 多模型聚合助手", "url": "https://www.getmerlin.in/chat", "desc": "集成多款主流大模型的在线 AI 聊天、网页摘要与写作助手" },
+      { "id": "a8", "category": "🤖 AI 对话 & 深度搜索", "title": "AI 工具集导航大全", "url": "https://ai-bot.cn/", "desc": "收录国内外 500+ 款写作、绘画、视频、编程与办公 AI 工具的权威分类导航" },
+      { "id": "a9", "category": "🤖 AI 对话 & 深度搜索", "title": "超级助手 AI 知识社区", "url": "https://www.wolai.com/vNksqn7wRKcAJqW4Qopcjh", "desc": "基于 Wolai 维护的 AI 绘画、大模型提示词工程与前沿实操教程知识库" },
+
+      // ==================== 🎨 AI 绘画 & ComfyUI 生态 ====================
+      { "id": "p1", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Civitai (C站全球模型库)", "url": "https://civitai.com/", "desc": "全球最大的 Stable Diffusion & FLUX Checkpoint、LoRA 模型与返图社区" },
+      { "id": "p2", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "LiblibAI 哩布哩布 AI", "url": "https://www.liblib.art/", "desc": "国内领先的 AI 绘画模型下载、在线 ComfyUI 工作流与生图平台" },
+      { "id": "p3", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "FLUX 模型合集 (Replicate)", "url": "https://replicate.com/collections/flux", "desc": "Black Forest Labs 出品的 FLUX 系列图像生成模型云端在线运行库" },
+      { "id": "p4", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Krea AI 实时生图与画质放大", "url": "https://www.krea.ai/home", "desc": "支持画布实时涂鸦生图、AI 超分辨率画质增强与细节重绘工具" },
+      { "id": "p5", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "OpenArt ComfyUI 工作流中心", "url": "https://openart.ai/workflows/home?appSort=featured", "desc": "全球精选 ComfyUI 节点工作流在线浏览、一键下载与云端运行平台" },
+      { "id": "p6", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Comflowy 中文实战百科", "url": "https://www.comflowy.com/zh-CN", "desc": "系统化中文 ComfyUI 与 Stable Diffusion 从入门到精通实战指南" },
+      { "id": "p7", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "何小鱼 ComfyUI 高手飞书文档", "url": "https://sli4b6l3vs.feishu.cn/docx/UORRdL8apoS0b3x1CLAc34gJnBe", "desc": "飞书开源文档：ComfyUI 从小白到高手全流程节点拆解与工作流实战手册" },
+      { "id": "p8", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "SD 官方全网最全进阶教程", "url": "https://github.com/ai-vip/stable-diffusion-tutorial", "desc": "GitHub 开源 Stable Diffusion 零基础入门到模型训练进阶指南" },
+      { "id": "p9", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "阿超 Stable Diffusion 语雀手册", "url": "https://www.yuque.com/a-chao/sd", "desc": "语雀系统化 AI 绘画教程、ControlNet 参数详解与插件排错指南" },
+      { "id": "p10", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "ComfyUI 入门感受与解析 (知乎)", "url": "https://zhuanlan.zhihu.com/p/620297462", "desc": "深度剖析节点式 AI 生图底层逻辑与工作流优势的入门长文" },
+      { "id": "p11", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "ComfyUI 多角度角色三视图方法", "url": "https://cobaltexplorer.com/2023/06/character-sheets-for-stable-diffusion/", "desc": "利用 Stable Diffusion 与 ComfyUI 生成一致性角色设定三视图教程" },
+      { "id": "p12", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Midjourney 提示词生成器", "url": "https://www.bzu.cn/mj_prompt_tool", "desc": "可视化点选镜头、光影、材质与艺术家风格的 MJ 提示词辅助构建工具" },
+      { "id": "p13", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "PromptHero 提示词搜索引擎", "url": "https://prompthero.com/", "desc": "全球领先的 Midjourney、Stable Diffusion 与 FLUX 优质提示词检索库" },
+      { "id": "p14", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Arthub.ai AI 艺术提示词画廊", "url": "https://arthub.ai/", "desc": "汇聚海量 AI 生成艺术作品与对应正向/反向 Prompt 提示词灵感库" },
+      { "id": "p15", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "商汤秒画 SenseMirage", "url": "https://miaohua.sensetime.com/generate", "desc": "商汤科技出品的免费中文 AI 作画、模型训练与高细节图像生成平台" },
+      { "id": "p16", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Vega AI 在线生图与训练平台", "url": "https://www.vegaai.net/", "desc": "支持文本生图、条件控制生图与专属风格模型定制的在线 AI 绘画工具" },
+      { "id": "p17", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Stability.AI 官方主页", "url": "https://stability.ai/", "desc": "开源生成式 AI 领军企业，提供图像、视频、音频、3D 与语言大模型生态" },
+      { "id": "p18", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "腾讯 ARC 人像画质修复与抠图", "url": "https://arc.tencent.com/en/ai-demos/imgRestore", "desc": "腾讯 AI 实验室在线工具：支持模糊人脸高清还原、动漫增强与智能抠像" },
+      { "id": "p19", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Finegrain 精准物体分割抠图", "url": "https://huggingface.co/spaces/finegrain/finegrain-object-cutter", "desc": "通过输入文字或框选即可在复杂背景中发丝级精准抠出指定物体的 AI 工具" },
+      { "id": "p20", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "ImgUpscaler AI 图像无损放大", "url": "https://imgupscaler.com/zh-tw", "desc": "支持批量免费将数码照片、CG 渲染图与动漫插画放大至 4K 高清分辨率" },
+      { "id": "p21", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "iFoto AI 电商摄影工作室", "url": "https://www.ifoto.ai/dashboard", "desc": "专为电商视觉打造的 AI 模特换装、商品背景生成与光影融合工作台" },
+      { "id": "p22", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "PicMa 一站式 AI 影像增强", "url": "https://picma.magictiger.ai/zh", "desc": "集成老照片修复、上色、去划痕与 AI 视频画质增强的在线工具箱" },
+
+      // ==================== 🎬 AI 视频 & 音频生成 ====================
+      { "id": "v1", "category": "🎬 AI 视频 & 音频生成", "title": "PixVerse AI 视频创作", "url": "https://pixverse.ai/", "desc": "支持文生视频、图生视频与角色一致性动画的高清 AI 视频生成平台" },
+      { "id": "v2", "category": "🎬 AI 视频 & 音频生成", "title": "DomoAI 视频转绘与风格化", "url": "https://www.domoai.app/en/create/video?utm_source=youtube", "desc": "将实拍视频一键转换为日漫、3D 卡通、像素或写实 CG 风格的 AI 视频工具" },
+      { "id": "v3", "category": "🎬 AI 视频 & 音频生成", "title": "HeyGen AI 数字人视频", "url": "https://app.heygen.com/home", "desc": "专业级 AI 口播数字人视频生成、多语种嘴型同步与视频翻译工作台" },
+      { "id": "v4", "category": "🎬 AI 视频 & 音频生成", "title": "MOTORICA AI 动作生成 (To UE5)", "url": "https://www.motorica.ai/", "desc": "专为游戏开发与 UE5 打造的 AI 骨骼动画生成与运动风格迁移平台" },
+      { "id": "v5", "category": "🎬 AI 视频 & 音频生成", "title": "Swapface AI 实时视频换脸", "url": "https://swapface.org/#/home", "desc": "轻量化高逼真度 AI 视频与直播实时面部替换工具" },
+      { "id": "v6", "category": "🎬 AI 视频 & 音频生成", "title": "LeiaPix (Immersity) 2D转3D景深动画", "url": "https://convert.leiapix.com/", "desc": "利用 AI 深度图自动将 2D 静态插画或照片转换为 3D 视差景深动画" },
+      { "id": "v7", "category": "🎬 AI 视频 & 音频生成", "title": "MyHeritage 老照片动起来", "url": "https://www.myheritage.com/site-1630592616/l", "desc": "DeepNostalgia 技术：让静态人物肖像照片自动生成自然的眨眼与微笑动态" },
+      { "id": "v8", "category": "🎬 AI 视频 & 音频生成", "title": "Fish Audio 声音克隆与 TTS", "url": "https://fish.audio/zh-CN/", "desc": "高自然度 AI 语音合成、多角色情感配音与几秒样本极速声音克隆平台" },
+      { "id": "v9", "category": "🎬 AI 视频 & 音频生成", "title": "Adobe Podcast 录音智能降噪", "url": "https://podcast.adobe.com/", "desc": "Adobe 出品 AI 人声增强工具，一键消除环境噪音并将普通录音提升至录音棚音质" },
+      { "id": "v10", "category": "🎬 AI 视频 & 音频生成", "title": "MaskGCT 国产开源语音大模型", "url": "https://www.jiqizhixin.com/articles/2024-10-30-3", "desc": "机器之心深度报道：媲美真人语调的国产开源语音生成大模型技术解析" },
+
+      // ==================== 🎮 UE5 虚幻引擎 & 游戏特效 ====================
+      { "id": "u1", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Epic 虚幻引擎官方开发者社区", "url": "https://dev.epicgames.com/community/unreal-engine/getting-started/games", "desc": "Unreal Engine 5 官方入门路径、技术文档、Lumen/Nanite 教程与技术论坛" },
+      { "id": "u2", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Fab (Epic 虚幻引擎官方新商城)", "url": "https://www.fab.com/", "desc": "原 Unreal Engine Marketplace 升级版，汇聚商业级 UE5 场景、Niagara 特效与 Megascans 资产" },
+      { "id": "u3", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Real Time VFX 实时特效论坛", "url": "https://realtimevfx.com/c/general/9", "desc": "全球最权威的游戏实时特效（UE5/Unity）制作思路、Shader 拆解与赛事社区" },
+      { "id": "u4", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "魔法盒 Magesbox 游戏特效网", "url": "https://www.magesbox.com/", "desc": "国内专业的游戏特效学习、Niagara 案例分享、作品交易与灵感捕获 CG 平台" },
+      { "id": "u5", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "blueprintUE 蓝图代码可视化分享", "url": "https://blueprintue.com/", "desc": "在线直接粘贴、网页端缩放预览与分享 Unreal Engine 蓝图节点代码的社区" },
+      { "id": "u6", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "80 Level 国际游戏美术专栏", "url": "https://80.lv/", "desc": "全球顶尖 3A 游戏场景美术、材质制作、UE5 灯光渲染与 VFX 幕后深度专访" },
+      { "id": "u7", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Rebelway 殿堂级 Houdini/FX 教程", "url": "https://www.rebelway.net/free", "desc": "面向影视与游戏 CG 艺术家的免费 Houdini 解算、UE5 特效教程与工程文件" },
+      { "id": "u8", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "GameFX 韩国游戏特效学院", "url": "https://gamefx.co.kr/", "desc": "韩国顶级次世代游戏 VFX 视觉特效、刀光技能与引擎材质课程展示站" },
+      { "id": "u9", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "VFExtra - UE5 VFX 专用工具集", "url": "https://www.nielsdewitte.be/VFExtra/", "desc": "独立技术美术开发的 Unreal Engine 实用特效纹理生成、流体烘焙与辅助工具" },
+      { "id": "u10", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Hoj Dee - UE5 材质与特效博客", "url": "https://hojdee.com/", "desc": "专注虚幻引擎 Shader 材质算法、Niagara 粒子与程序化生成技术的深度个人博客" },
+      { "id": "u11", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "HeyYo CG - Niagara 实用案例库", "url": "https://heyyocg.link/", "desc": "精选 UE5 Niagara 粒子系统进阶模块应用、交互特效与工程实现笔记" },
+      { "id": "u12", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Character Creator Auto-Setup (UE插件)", "url": "https://www.reallusion.com/auto-setup/unreal-engine/default.html", "desc": "Reallusion 官方 CC 角色一键导入 Unreal Engine 自动配置骨骼与高级皮肤材质插件" },
+      { "id": "u13", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "CC 到 MetaHuman 管线系列教程", "url": "https://forum.reallusion.com/535222/CCtoMetaHuman-Pipeline-Available-Now", "desc": "将 Character Creator 自定义角色无缝转换并驱动 UE5 MetaHuman 数字人的官方教程" },
+      { "id": "u14", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Javier Perez (MeshModeler) SP材质教程", "url": "https://meshmodeler.com/", "desc": "资深材质艺术家 Javier Perez 的 Substance Designer/Painter 程序化材质系列教程" },
+      { "id": "u15", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "FootageCrate 4K 影视VFX特效素材库", "url": "https://vfx.productioncrate.com/", "desc": "海量带透明通道的 4K 爆炸、烟雾、魔法粒子、能量光束视频素材与音效库" },
+      { "id": "u16", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "LookAE 大众脸影视后期特效", "url": "https://www.lookae.com/", "desc": "国内知名 AE/PR/C4D/达芬奇/UE 插件、汉化补丁、模板与后期视觉特效资源站" },
+      { "id": "u17", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "爱学习的老土狗 CG 游戏特效课程", "url": "http://www.cgltg.com/", "desc": "专注国内游戏特效师技能进阶、UE5 特效实战课程与行业资源分享平台" },
+      { "id": "u18", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Vfxmed 全三维软件 CG 资源与课程库", "url": "https://www.vfxmed.com/", "desc": "涵盖 Houdini、UE5、Blender、Maya、C4D 全套海外高端 CG 教程与插件资源站" },
+      { "id": "u19", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "UnityUnreal 虚幻引擎商业资产站", "url": "https://unityunreal.com/unreal-engine-assets/", "desc": "海量 Unreal Engine 完整场景工程、动作包、Niagara 特效与蓝图系统资源下载" },
+      { "id": "u20", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "GameAssetsFree 免费虚幻引擎资产", "url": "https://gameassetsfree.com/assets-ue/", "desc": "免费分享 Unreal Engine 商城环境建筑、武器道具、材质包与游戏特效资产" },
+      { "id": "u21", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "World Creator 地形生成器官网与教程", "url": "https://www.world-creator.com/index.html", "desc": "实时 GPU 加速的专业级三维程序化地形、山脉侵蚀与地貌景观生成软件官网" },
+      { "id": "u22", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "UE4/UE5 第三人称动作游戏实战演示", "url": "https://www.youtube.com/watch?v=ipqaJX7mdko", "desc": "YouTube 虚幻引擎第三人称战斗系统、状态机与打击特效合成完整演示视频" },
+
+      // ==================== 🧊 3D 模型 & 次世代 CG 资产 ====================
+      { "id": "m1", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "CGTrader 全球 3D 模型交易平台", "url": "https://www.cgtrader.com/", "desc": "超百万级专业 PBR 游戏模型、概念载具、建筑组件与 3D 打印资产下载市场" },
+      { "id": "m2", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Sketchfab Store 在线 3D 资产商店", "url": "https://sketchfab.com/store", "desc": "支持在浏览器内直接 360° 实时查看拓扑、骨骼动画与 PBR 贴图通道的 3D 模型库" },
+      { "id": "m3", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "KitBash3D 殿堂级电影/游戏场景资产包", "url": "https://kitbash3d.com/", "desc": "好莱坞与 3A 游戏工作室御用的赛博朋克、废土、科幻与奇幻世界大型 3D 建筑资产" },
+      { "id": "m4", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Daz 3D 高精度角色与服装官方商城", "url": "https://www.daz3d.com/shop", "desc": "全球最大的写实 3D 人物基底模型、精致毛发、服装道具与表情姿态资产官网" },
+      { "id": "m5", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D Warehouse (SketchUp 海量模型库)", "url": "https://3dwarehouse.sketchup.com/", "desc": "涵盖全球真实建筑、室内家居、城市街道设施与景观构件的免费三维模型库" },
+      { "id": "m6", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "PBRMAX 国产超高清 3D 扫描资产库", "url": "https://www.pbrmax.cn/discover?lan=zh-CN", "desc": "专注中国古建、非遗文物、东方自然植被与现代道具的影视级全流程 PBR 资产平台" },
+      { "id": "m7", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Unique3D AI 单图转 3D 模型", "url": "https://huggingface.co/spaces/Wuvin/Unique3D", "desc": "HuggingFace 在线演示：通过单张 2D 图像极速生成高精度 3D 网格模型" },
+      { "id": "m8", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "HyperHuman (Deemos) 照片生成3D角色", "url": "https://hyperhuman.deemos.com/chatavatar", "desc": "根据照片或自然语言描述自动生成带拓扑贴图的写实 3D 角色资产" },
+      { "id": "m9", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "CG Persia 殿堂级海外 CG 资源站", "url": "https://cgpersia.com/", "desc": "全球最具影响力的 CG 软件、渲染器插件、大师级海外教程与 3D 资产每日更新站" },
+      { "id": "m10", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "GFXCamp CG 资源营地", "url": "https://www.gfxcamp.com/", "desc": "免费分享最新三维软件、AE/C4D/Blender 插件、UE 资产与高清素材的综合平台" },
+      { "id": "m11", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "DarknessFX (dfx.lv) 游戏开发资源站", "url": "https://dfx.lv/", "desc": "专注游戏开发美术教程、Unreal Engine 商业资产包与 3D 工具链分享博客" },
+      { "id": "m12", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "画忆妙妙屋 (IIICG) 精品场景资源", "url": "https://www.iiicg.com/", "desc": "国内聚焦高品质 UE5 三维概念场景、大型环境地貌工程与次世代 CG 美术资产站" },
+      { "id": "m13", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "AN 素材库 (影视与游戏 CG 资产)", "url": "https://www.ansucai.com/", "desc": "收录丰富三维场景模型、VFX 视频素材与工程模板的综合设计素材网" },
+      { "id": "m14", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Game-Asset.cc 游戏美术资产网", "url": "https://game-asset.cc/", "desc": "提供 Unreal Engine 虚幻商城环境包、角色绑定模型及海外 CG 教程直装下载" },
+      { "id": "m15", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Desire FX 3D Models", "url": "https://desirefx.me/", "desc": "老牌海外 3D 模型、FBX/OBJ 通用资产与影视特效教程资源免费下载站" },
+      { "id": "m16", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D-MODEL.org 通用三维模型网", "url": "https://3d-model.org/", "desc": "按分类整理的家具、载具、植物与建筑 3ds Max / Blender 通用模型下载库" },
+      { "id": "m17", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3Dnchu 日本 CG 行业资讯与免费资产", "url": "https://3dnchu.com/category/", "desc": "日本知名 CG 媒体，第一时间汇总全球免费 3D 模型、Blender 插件与 UE5 前沿情报" },
+      { "id": "m18", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "WireWheelsClub 高精细度免费汽车模型", "url": "https://wirewheelsclub.com/", "desc": "由资深汽车建模师维护的高精度免费可商用汽车 3D 模型下载站" },
+      { "id": "m19", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "GFX-HUB 海外 CG 资产中心", "url": "https://gfx-hub.co/", "desc": "高频更新的海外 3D 角色模型、ZBrush 笔刷、Substance 材质与游戏资产聚合网" },
+      { "id": "m20", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Render-State (Daz3D 角色资产库)", "url": "https://render-state.to/", "desc": "专门收录 Daz 3D Genesis 系列人物角色、服装、发型、灯光与动作包的下载站" },
+      { "id": "m21", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "ZoneGFX 免费 Daz3D 模型站", "url": "https://zonegfx.com/", "desc": "免费高速获取 Daz Studio 人物皮肤、写实角色预设与三维室内场景道具" },
+      { "id": "m22", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "GFXFather 高速直链 CG 资源库", "url": "https://gfxfather.com/", "desc": "支持 IDM 满速直连下载的海外全品类 CG 教程、软件直装包与 3D 工程资产站" },
+      { "id": "m23", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Psdly.to 海外 CG 课程与 3D 资产站", "url": "https://www.psdly.to/", "desc": "持续更新 Gumroad / Wingfox / ArtStation 热门三维建模教程与设计资产下载站" },
+      { "id": "m24", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "GoDownloads.net 综合 CG 下载站", "url": "https://godownloads.net/", "desc": "涵盖 3D 打印模型、游戏低模资产、贴图包与主流设计软件的海外下载平台" },
+      { "id": "m25", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "CGgoat 视觉与三维设计素材网", "url": "https://www.cggoat.com/", "desc": "国内面向三维设计师与后期师的精品 C4D/Blender 模型、贴图与样机素材社区" },
+      { "id": "m26", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "GSan 设计 (cgsan.vip)", "url": "https://cgsan.vip/", "desc": "精心整理的国内 CG 建模、渲染插件、材质球与工程资源分享小站" },
+      { "id": "m27", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "UnrealAll 虚幻商城全量免费资产", "url": "https://unrealall.com/", "desc": "专注 Unreal Engine 虚幻引擎各版本环境、特效、动作与插件资源的免费归档站" },
+      { "id": "m28", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "CG3DA 免费 3D CG 资源平台", "url": "https://www.cg3da.com/", "desc": "免费分享游戏次世代角色、场景模型、动作捕捉文件与 PBR 贴图的国内平台" },
+      { "id": "m29", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Triplegangers 影视级真人 3D 光学扫描", "url": "https://triplegangers.com/", "desc": "提供超高精度真人全身、多表情头部光学扫描模型与微孔级皮肤贴图参考" },
+      { "id": "m30", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "CGDownload.ru 俄罗斯超全 CG 武器库", "url": "https://cgdownload.ru/", "desc": "俄罗斯顶级免费 CG 宝库，每日海量更新 UE5 资产、3D 模型、插件与大师教程" },
+      { "id": "m31", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "渲染 101 云渲染农场工作台", "url": "https://xuanran101.com/member/account/login.html", "desc": "支持 3ds Max / Maya / C4D / Blender 批量云端极速渲染与项目管理后台" },
+      { "id": "m32", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D溜溜网 - 现代非机动车电动自行车模型", "url": "https://3d.3d66.com/reshtmla/model/items/2R/2RxE446FyVbo00UNl0LJ.html", "desc": "城市街景道具：高精度现代电动自行车/电瓶车 3D 模型 (VR渲染器 / 37.89MB)" },
+      { "id": "m33", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D溜溜网 - 现代十字路口交通信号灯模型", "url": "https://3d.3d66.com/reshtmla/model/items/2M/2MAnJl3t5lyV5xSYBgGZ.html", "desc": "城市道路交通基础设施：现代红绿灯交通信号灯 3D 模型 (VR渲染器 / 74.84MB)" },
+      { "id": "m34", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D溜溜网 - 现代马路栅栏路障围挡模型", "url": "https://3d.3d66.com/reshtmla/model/items/z7/z7xWm3xh4g5JM3H43Z0r.html", "desc": "城市市政施工道具：现代马路护栏栅栏与路障围挡 3D 模型 (CR渲染器 / 7.31MB)" },
+
+      // ==================== 🌍 PBR 材质贴图 & 全景 HDRI ====================
+      { "id": "t1", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Poly Haven (CC0 免费 16K HDRI 与材质)", "url": "https://polyhaven.com/hdris", "desc": "100% 免费无版权 CC0 协议的 8K/16K 户外室内 HDRI 环境光、PBR 材质与扫描模型库" },
+      { "id": "t2", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "ambientCG 免费 CC0 PBR 无缝材质库", "url": "https://ambientcg.com/list?sort=popular", "desc": "收录数千套免费商用 4K/8K PBR 材质球（含法线、粗糙度、置换贴图）的权威资源网" },
+      { "id": "t3", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Texturing.XYZ 影视级人物皮肤微观纹理", "url": "https://texturing.xyz/", "desc": "全球角色艺术家必备的多通道超高清人类面部毛孔、皱纹置换贴图与虹膜扫描库" },
+      { "id": "t4", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Textures.com 全球老牌 3D 贴图鼻祖", "url": "https://www.textures.com/", "desc": "涵盖建筑砖墙、自然岩石、风化金属、织物、污迹贴花与 PBR 扫描材质的百科全书" },
+      { "id": "t5", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "HDRMaps 20K 超清 HDRI 与地面扫描库", "url": "https://hdrmaps.com/", "desc": "面向高端汽车与建筑渲染的 20K 超高动态范围全景天空贴图与摄影测量地面纹理" },
+      { "id": "t6", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "HDRI-Skies 全景天空贴图站 (含免费专区)", "url": "https://hdri-skies.com/free-hdris/", "desc": "提供日出、黄昏、阴天等全天候自然光照 360° 高动态 EXR 天空环境球贴图资源" },
+      { "id": "t7", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Blockade Labs Skybox AI 全景图生成", "url": "https://www.blockadelabs.com/", "desc": "通过文字提示词一键生成 360° 全景天空盒与游戏环境 HDRI 贴图" },
+      { "id": "t8", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "2G Academy 高精度次世代植物资产", "url": "https://www.2gacademy.net/product-page/lagerstroemia-indica", "desc": "专业级紫薇树（Lagerstroemia Indica）等写实建筑景观植物模型与叶片材质包" },
+      { "id": "t9", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Pexels 免费高清无版权摄影图与视频", "url": "https://www.pexels.com/zh-cn/", "desc": "免费可商用的高分辨率实拍风景、建筑、人物摄影参考图与 4K 空镜视频素材库" },
+      { "id": "t10", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Storyblocks 免版税视听素材全集", "url": "https://www.storyblocks.com/", "desc": "提供海量免版税 4K 实拍视频、绿幕抠像素材、背景音乐与音效的创作者素材库" },
+
+      // ==================== ✂️ 图像工具 & 后期软件运维 ====================
+      { "id": "i1", "category": "✂️ 图像工具 & 后期软件运维", "title": "Remove.bg 全自动 AI 抠图去背景", "url": "https://www.remove.bg/zh", "desc": "5 秒内全自动识别人物、商品与动物边缘并生成干净透明底 PNG 的标杆抠图工具" },
+      { "id": "i2", "category": "✂️ 图像工具 & 后期软件运维", "title": "Erase.bg 免费高清原图去背景工具", "url": "https://www.erase.bg/zh", "desc": "支持高达 5000×5000px 分辨率原图免费 AI 抠图并保留完整边缘细节的在线神器" },
+      { "id": "i3", "category": "✂️ 图像工具 & 后期软件运维", "title": "Squoosh (Google 纯本地无损图片压缩)", "url": "https://squoosh.app/", "desc": "Google Chrome 团队出品，纯浏览器本地实时对比画质并转换 WebP/AVIF/PNG 的压缩工具" },
+      { "id": "i4", "category": "✂️ 图像工具 & 后期软件运维", "title": "PhotoMosh 赛博朋克故障风特效生成器", "url": "https://photomosh.com/", "desc": "一键为图片或视频添加 RGB 色散、像素化、扫描线、抖动等 Glitch 故障艺术效果" },
+      { "id": "i5", "category": "✂️ 图像工具 & 后期软件运维", "title": "Docsmall 在线 GIF 动图与 PDF 极速压缩", "url": "https://docsmall.com/gif-compress", "desc": "界面极简无广告的国内良心工具，支持批量大幅缩减 GIF 动图、JPG 图片与 PDF 体积" },
+      { "id": "i6", "category": "✂️ 图像工具 & 后期软件运维", "title": "Ezgif 全功能 GIF 动图尺寸裁剪与编辑", "url": "https://ezgif.com/resize", "desc": "老牌全能 GIF 工具箱，支持修改动图尺寸、视频转 GIF、抽帧变速、加字幕与逐帧优化" },
+      { "id": "i7", "category": "✂️ 图像工具 & 后期软件运维", "title": "Pixlr X 网页版图层式在线 PS 编辑器", "url": "https://pixlr.com/cn/x/#template&category=simple-collage", "desc": "无需安装软件即可在浏览器内完成拼图排版、调色滤镜、图层蒙版与文字设计的编辑器" },
+      { "id": "i8", "category": "✂️ 图像工具 & 后期软件运维", "title": "CleanPNG 百万级免费透明 PNG 免抠素材", "url": "https://www.cleanpng.com/", "desc": "无需登录即可无限免费下载数百万张高清透明背景 PNG 装饰元素与贴图素材" },
+      { "id": "i9", "category": "✂️ 图像工具 & 后期软件运维", "title": "LovePik 摄图网海外版 (PNG与图形模板)", "url": "https://lovepik.com/", "desc": "提供丰富的透明 PNG 贴图、PSD 海报分层源文件、矢量插画与剪辑元素下载" },
+      { "id": "i10", "category": "✂️ 图像工具 & 后期软件运维", "title": "SVG Shapes 100+ 免费矢量几何形状集", "url": "https://www.svgshapes.in/", "desc": "收录 100 多种可在线实时调整颜色、渐变与噪点的现代 UI 装饰性 SVG 矢量图形" },
+      { "id": "i11", "category": "✂️ 图像工具 & 后期软件运维", "title": "ICONCE 在线 SVG 矢量图标定制生成器", "url": "https://iconce.com/", "desc": "支持在线自由调整线条粗细、圆角大小、双色渐变并一键导出 SVG/PNG 的图标工具" },
+      { "id": "i12", "category": "✂️ 图像工具 & 后期软件运维", "title": "Gradient Pro 极致流体渐变背景工坊", "url": "https://bg.diyun.site/", "desc": "一键生成大师级柔和极光、流体弥散渐变色背景，支持导出 CSS 代码与 4K 壁纸图" },
+      { "id": "i13", "category": "✂️ 图像工具 & 后期软件运维", "title": "LZL 在线批量圆角图片生成器", "url": "https://lzltool.com/batch-img-radius", "desc": "支持一次性拖入多张图片，自定义四角圆角像素或百分比并批量打包下载透明圆角图" },
+      { "id": "i14", "category": "✂️ 图像工具 & 后期软件运维", "title": "UUTool 在线图片尺寸像素修改工具", "url": "https://uutool.cn/img-resize/", "desc": "按固定宽高像素或等比例快速缩放图片尺寸，纯前端处理保护图片隐私" },
+      { "id": "i15", "category": "✂️ 图像工具 & 后期软件运维", "title": "iLoveIMG 免费在线批量压缩 JPG/PNG", "url": "https://www.iloveimg.com/zh-cn/compress-image/compress-jpg", "desc": "保持高画质的前提下批量极限压缩数十张 JPG、PNG 或 GIF 图像文件体积" },
+      { "id": "i16", "category": "✂️ 图像工具 & 后期软件运维", "title": "SafeResize 按指定 KB 大小精准调整图片", "url": "https://saferesize.com/", "desc": "专门解决报名、签证上传限制：输入目标 KB 数值即可自动把证件照或 PDF 压缩至合规大小" },
+      { "id": "i17", "category": "✂️ 图像工具 & 后期软件运维", "title": "Smallpdf 在线 PDF 转换与编辑全能王", "url": "https://smallpdf.com/cn", "desc": "一站式解决 PDF 转 Word/PPT/JPG、PDF 合并拆分、压缩瘦身与电子签名" },
+      { "id": "i18", "category": "✂️ 图像工具 & 后期软件运维", "title": "Xodo 免费在线直接编辑 PDF 原文文本", "url": "https://xodo.com/zh_cn/edit-pdf-text", "desc": "无需转格式，直接在浏览器中选中并修改 PDF 文件里的原有文字、字号与排版" },
+      { "id": "i19", "category": "✂️ 图像工具 & 后期软件运维", "title": "Tiqu.cc 全网社媒视频与高清原图提取器", "url": "https://tiqu.cc/", "desc": "粘贴链接即可免水印提取下载 YouTube、TikTok、Twitter(X)、Instagram 高清视频与图片" },
+      { "id": "i20", "category": "✂️ 图像工具 & 后期软件运维", "title": "BeFonts 设计师精选免费西文字体库", "url": "https://befonts.com/", "desc": "高质量现代无衬线、优雅衬线、赛博科幻与海报标题英文字体免费下载平台" },
+      { "id": "i21", "category": "✂️ 图像工具 & 后期软件运维", "title": "FontRiver 免费英文字体与 Dingbats 符号库", "url": "https://www.fontriver.com/", "desc": "按风格细致分类的免费可下载英文字体与图形化 Dingbats 装饰符号字库" },
+      { "id": "i22", "category": "✂️ 图像工具 & 后期软件运维", "title": "字体家 在线立体字与毛笔书法转换器", "url": "https://www.zitijia.com/build/12", "desc": "输入中文即可实时生成带有光影立体质感或名家毛笔书法风格的艺术字图片" },
+      { "id": "i23", "category": "✂️ 图像工具 & 后期软件运维", "title": "VAU 艺术字体与海报标题特效素材", "url": "https://vaufonts.com/", "desc": "面向视觉设计与游戏宣发的个性艺术字体、金属质感字效与排版素材库" },
+      { "id": "i24", "category": "✂️ 图像工具 & 后期软件运维", "title": "Canva 可画 Logo 视觉模板中心", "url": "https://www.canva.com/templates/?query=logo", "desc": "数千款现成可在线拖拽编辑的品牌 Logo、个人徽标与社交媒体头像设计模板" },
+      { "id": "i25", "category": "✂️ 图像工具 & 后期软件运维", "title": "UUGai 免费中文 Logo 在线一键制作", "url": "https://www.uugai.com/", "desc": "免注册免付费，输入品牌名称即可在 1 分钟内自动排版生成多套中英文标志方案" },
+      { "id": "i26", "category": "✂️ 图像工具 & 后期软件运维", "title": "甲方叭叭 视觉与三维设计师专属导航", "url": "https://jiafangbb.com/", "desc": "聚合国内外优质配色、样机、字体、摄影图库与三维渲染资源的精选设计导航" },
+      { "id": "s1", "category": "✂️ 图像工具 & 后期软件运维", "title": "NewCGer 新CG儿 (免费 AE 模板与素材)", "url": "https://www.newcger.com/", "desc": "国内老牌良心站点，免注册免费高速下载海量 AE 工程模板、实拍视频与音频素材" },
+      { "id": "s2", "category": "✂️ 图像工具 & 后期软件运维", "title": "ZaoAng 早安 CG 影视后期资源平台", "url": "https://www.zaoang.com/", "desc": "汇聚影视后期合成、达芬奇调色 LUTs、三维插件与海外进阶教程的资源社区" },
+      { "id": "s3", "category": "✂️ 图像工具 & 后期软件运维", "title": "潮点视频 高清实拍与后期模板素材", "url": "https://shipin520.com/shipin/367599.html", "desc": "提供正版高清 4K 视频实拍素材、绿幕特效合成元素与 PR/AE 片头模板" },
+      { "id": "s4", "category": "✂️ 图像工具 & 后期软件运维", "title": "YaoFANGUK 视频硬字幕去除与提取 (GitHub)", "url": "https://github.com/YaoFANGUK", "desc": "开源大神「天涯古巷」主页：包含 video-subtitle-remover 视频硬字幕 AI 擦除与提取神器" },
+      { "id": "s5", "category": "✂️ 图像工具 & 后期软件运维", "title": "腾龙工作室 (TenlonStudio) 软件资源库", "url": "https://www.tenlonstudio.com/", "desc": "长期稳定维护的 Adobe 全家桶、三维设计软件、系统镜像与后期插件分享论坛" },
+      { "id": "s6", "category": "✂️ 图像工具 & 后期软件运维", "title": "果核剥壳 精品绿色便携软件分享", "url": "https://www.ghxi.com/", "desc": "国内极具口碑的绿色软件站，专注分享免安装便携版、去广告纯净版 Windows/安卓工具" },
+      { "id": "s7", "category": "✂️ 图像工具 & 后期软件运维", "title": "LRepacks 俄罗斯大神直装便携版软件库", "url": "https://lrepacks.net/", "desc": "全球知名的俄罗斯 Repack 站点，提供海量免激活一键直装的专业设计、音视频与系统软件" },
+      { "id": "s8", "category": "✂️ 图像工具 & 后期软件运维", "title": "ZAPRO · 杂铺 精选生产力软件库", "url": "https://tmioe.com/", "desc": "高颜值纯净软件博客，精选 Windows 与 macOS 平台设计、剪辑、办公及效率破解软件" },
+      { "id": "s9", "category": "✂️ 图像工具 & 后期软件运维", "title": "无痕哥 Blog 实用软件资源站", "url": "https://www.wuhenge.com/", "desc": "持续更新专业图形图像软件、电脑提效工具与实用技术教程的个人资源博客" },
+      { "id": "s10", "category": "✂️ 图像工具 & 后期软件运维", "title": "APP喵 (阿喵软件与互联网黑科技分享)", "url": "https://www.appmiu.com/", "desc": "每日挖掘全网有趣好用的开源小工具、独立开发 App、网站资源与电脑软件" },
+      { "id": "s11", "category": "✂️ 图像工具 & 后期软件运维", "title": "油小猴 实用油猴脚本与黑科技工具箱", "url": "https://www.youxiaohou.com/", "desc": "聚合网盘满速直链解析、浏览器扩展插件、Tampermonkey 脚本与宝藏小网站合集" },
+      { "id": "s12", "category": "✂️ 图像工具 & 后期软件运维", "title": "刘明野的工具箱 (开发者与日常在线工具)", "url": "https://tools.liumingye.cn/", "desc": "极简无广告的在线工具集合，涵盖无损音乐、二维码生成、编解码与图片处理" },
+      { "id": "s13", "category": "✂️ 图像工具 & 后期软件运维", "title": "帮你下 国外网盘高速中转代下服务", "url": "https://bangnixia.com/fetch", "desc": "解决 CG 资源下载痛点：支持将 Rapidgator、Katfile、Nitroflare 等海外慢速网盘秒转国内高速直链" },
+      { "id": "s15", "category": "✂️ 图像工具 & 后期软件运维", "title": "LANDrop 跨平台局域网无损极速快传", "url": "https://landrop.app/", "desc": "支持 Windows / Mac / iOS / Android 局域网内不耗流量、跑满千兆带宽互传大文件与视频素材" },
+      { "id": "s16", "category": "✂️ 图像工具 & 后期软件运维", "title": "MyFreeMP3 全网无损音乐在线搜索与下载", "url": "https://tools.liumingye.cn/music/#/", "desc": "支持在线免费试听并下载 FLAC / MP3 高音质音乐、影视配乐与歌词封面" },
+      { "id": "s17", "category": "✂️ 图像工具 & 后期软件运维", "title": "熊猫无损音乐官网 (WAV/FLAC/DSD音乐库)", "url": "https://www.xmwav.com/", "desc": "发烧友与剪辑师常用的高品质 WAV、FLAC 无损音乐专辑与经典曲库免费下载网" },
+      { "id": "n1", "category": "✂️ 图像工具 & 后期软件运维", "title": "Vercel 个人前端项目部署控制台", "url": "https://vercel.com/zhaoliangs-projects-41437e85", "desc": "管理个人作品集网站、NotionNext 博客与前端应用的自动化 CI/CD 云端部署面板" },
+      { "id": "n2", "category": "✂️ 图像工具 & 后期软件运维", "title": "Cloudflare 域名 DNS 解析与 CDN 控制台", "url": "https://dash.cloudflare.com/5f703a6765e76b5b2aca3c93564606a3/zhaoliangartists.top", "desc": "zhaoliangartists.top 专属域名 DNS 记录配置、全球 CDN 缓存加速与 SSL 安全防护后台" },
+      { "id": "n3", "category": "✂️ 图像工具 & 后期软件运维", "title": "NotionNext 个人博客源码仓库 (GitHub)", "url": "https://github.com/ZhaoLiangArtist/NotionNext/tree/main", "desc": "基于 Notion 驱动的个人作品集与技术博客网站源码、主题配置及部署说明仓库" },
+      { "id": "n4", "category": "✂️ 图像工具 & 后期软件运维", "title": "Namesilo 国际域名注册与管理后台", "url": "https://www.namesilo.com/account/", "desc": "管理个人顶级域名续费、隐私保护与自定义 NameServer 服务器指向配置" },
+      { "id": "n5", "category": "✂️ 图像工具 & 后期软件运维", "title": "七牛云 对象存储 (Kodo) 控制台", "url": "https://portal.qiniu.com/home", "desc": "用于托管个人网站高清大图、三维展示资源与静态文件的国内 CDN 云存储平台" },
+      { "id": "n6", "category": "✂️ 图像工具 & 后期软件运维", "title": "多吉云 视频云点播与无广告流媒体托管", "url": "https://console.dogecloud.com/vod/upload", "desc": "专为个人作品集网站提供的高清 VFX 作品视频上传、转码加密与极速内嵌播放服务" },
+      { "id": "n7", "category": "✂️ 图像工具 & 后期软件运维", "title": "Google PageSpeed Insights 网站性能测速", "url": "https://pagespeed.web.dev/", "desc": "Google 官方网页加载速度、Core Web Vitals 核心指标与移动端/桌面端 SEO 优化诊断工具" },
+      { "id": "n8", "category": "✂️ 图像工具 & 后期软件运维", "title": "ImgTP 免费高速公共外链图床", "url": "https://imgtp.com/", "desc": "支持拖拽上传并一键生成 Markdown、HTML 与直链地址的免费稳定图片托管图床" },
+      { "id": "n9", "category": "✂️ 图像工具 & 后期软件运维", "title": "路过图床 (ImgSE) 免注册外链图床", "url": "https://imgse.com/", "desc": "老牌高可用全球 CDN 图床，适合博客文章插图、论坛发帖与作品截图外链托管" },
+      { "id": "n10", "category": "✂️ 图像工具 & 后期软件运维", "title": "FlipHTML5 在线 PDF 3D 翻页电子画册托管", "url": "https://fliphtml5.com/dashboard/publications?lang=zh_cn", "desc": "将 PDF 作品集或文档一键转换为可嵌入个人网页的交互式 3D 翻页电子书" },
+      { "id": "n11", "category": "✂️ 图像工具 & 后期软件运维", "title": "Flaticon 全球最大扁平化矢量图标库", "url": "https://www.flaticon.com/search?word=cloud", "desc": "提供数百万枚网页 UI、建站装饰与演示文稿专用的 PNG / SVG 矢量图标搜索下载" },
+      { "id": "n12", "category": "✂️ 图像工具 & 后期软件运维", "title": "Babiato 全球建站主题与数字资源论坛", "url": "https://babia.to/", "desc": "海外极客社区，免费分享高级 WordPress 主题、插件、UI 套件与建站源码资源" },
+      { "id": "n13", "category": "✂️ 图像工具 & 后期软件运维", "title": "WordPress 资源海 (汉化主题与插件库)", "url": "https://wpzyh.com/", "desc": "专注 WordPress 中文汉化版商业主题、独立站插件与建站排错教程的资源平台" },
+      { "id": "n15", "category": "✂️ 图像工具 & 后期软件运维", "title": "Fiat24 瑞士合规多币种万事达卡后台", "url": "https://www.fiat24.com/login", "desc": "瑞士银行监管的多币种账户与海外消费万事达卡登录管理中心" },
+      { "id": "n16", "category": "✂️ 图像工具 & 后期软件运维", "title": "iKuuu VPN 海外加速用户中心", "url": "https://ikuuu.co/user", "desc": "常用海外网络加速节点状态查看、流量签到与 Clash 订阅链接管理面板" },
+      { "id": "n17", "category": "✂️ 图像工具 & 后期软件运维", "title": "狗狗加速 (dg5.org) 高速专线仪表盘", "url": "https://www.dg5.org/#/dashboard", "desc": "低延迟海外网络加速专线控制台，适合流媒体观看、AI 生图与外网资料检索" }
+    ];
+    /*__SYNC_DATA_END__*/
+
+    // ==================== 4. 全局存储 Key 与搜索引擎定义 ====================
+    const STORAGE_KEY       = 'pro_cockpit_bookmarks_v6';
+    const DATA_VER_KEY      = 'pro_cockpit_data_version_v6';
+    const CUSTOM_CATS_KEY   = 'pro_cockpit_custom_cats_v6';
+    const CUSTOM_LOGO_KEY   = 'pro_cockpit_custom_logo_v6';
+    const RECENT_VISITS_KEY = 'pro_cockpit_recent_visits_v4';
+    const MEMO_STORAGE_KEY  = 'pro_cockpit_quick_memo_v4';
+    const THEME_KEY         = 'pro_cockpit_theme';
+    const ACCENT_KEY        = 'pro_cockpit_accent_color';
+
+    const SEARCH_ENGINES = {
+      local:    { name: '站内书签', btnText: '筛选', placeholder: '输入关键词实时检索书签名称、完整功能描述或网址（按 Ctrl+K 快速聚焦）...', url: '' },
+      google:   { name: 'Google',   btnText: 'Google 搜索', placeholder: '在 Google 中搜索全球技术文档、UE5 资料与 CG 教程，按回车直达...', url: 'https://www.google.com/search?q=' },
+      bing:     { name: 'Bing',     btnText: '必应搜索', placeholder: '在微软 Bing 中搜索全球网页与技术资料，按回车直达...', url: 'https://cn.bing.com/search?q=' },
+      github:   { name: 'GitHub',   btnText: '搜开源项目', placeholder: '在 GitHub 检索开源项目、ComfyUI 自定义节点与实用脚本...', url: 'https://github.com/search?q=' },
+      bilibili: { name: 'B站',      btnText: '搜 B站视频', placeholder: '在 Bilibili 搜索 UE5 / ComfyUI / Houdini 视频教程与 UP 主...', url: 'https://search.bilibili.com/all?keyword=' }
+    };
+
+    const CATEGORY_META = {
+      '🔥 高频工作台 & 社区':         { icon: '🔥', grad: 'from-orange-500 to-rose-600' },
+      '🤖 AI 对话 & 深度搜索':        { icon: '🤖', grad: 'from-indigo-500 to-blue-600' },
+      '🎨 AI 绘画 & ComfyUI 生态':    { icon: '🎨', grad: 'from-purple-500 to-indigo-600' },
+      '🎬 AI 视频 & 音频生成':        { icon: '🎬', grad: 'from-fuchsia-500 to-rose-500' },
+      '🎮 UE5 虚幻引擎 & 游戏特效':   { icon: '🎮', grad: 'from-blue-500 to-cyan-500' },
+      '🧊 3D 模型 & 次世代 CG 资产':  { icon: '🧊', grad: 'from-violet-500 to-purple-600' },
+      '🌍 PBR 材质贴图 & 全景 HDRI':  { icon: '🌍', grad: 'from-emerald-500 to-teal-600' },
+      '✂️ 图像工具 & 后期软件运维':   { icon: '✂️', grad: 'from-amber-500 to-orange-600' }
+    };
+
+    // 5 大功能模块各自独立的分类树规则与默认结构
+    const MODULE_CONFIG = {
+      bookmarks: {
+        name: '网址导航全集',
+        headerTitle: '导航分类目录',
+        defaultCategories: Object.keys(CATEGORY_META)
+      },
+      Cinema: {
+        name: '影视与视频创作专区',
+        headerTitle: '影视独立分类',
+        defaultCategories: [
+          '📺 视频流媒体与作品社区',
+          '🎬 AI 视频生成与数字人',
+          '🎞️ 影视后期模板与 VFX 素材',
+          '🧰 视频提取与硬字幕擦除'
+        ],
+        autoAssignCategory: (bm) => {
+          if (bm.module === 'Cinema' && bm.modCategory) return bm.modCategory;
+          if (['b1', 'b2', 'b10'].includes(bm.id)) return '📺 视频流媒体与作品社区';
+          if (['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7'].includes(bm.id)) return '🎬 AI 视频生成与数字人';
+          if (['u15', 'u16', 's1', 's2', 's3', 't10'].includes(bm.id)) return '🎞️ 影视后期模板与 VFX 素材';
+          if (['s4', 'i19', 'n6'].includes(bm.id)) return '🧰 视频提取与硬字幕擦除';
+          return null;
+        }
+      },
+      Music: {
+        name: '音乐电台 & AI 音频专区',
+        headerTitle: '音乐独立分类',
+        defaultCategories: [
+          '🎧 无损音乐与在线电台',
+          '🎙️ AI 声音克隆与语音合成',
+          '🎚️ 录音智能降噪与配乐库'
+        ],
+        autoAssignCategory: (bm) => {
+          if (bm.module === 'Music' && bm.modCategory) return bm.modCategory;
+          if (['s16', 's17'].includes(bm.id)) return '🎧 无损音乐与在线电台';
+          if (['v8', 'v10'].includes(bm.id)) return '🎙️ AI 声音克隆与语音合成';
+          if (['v9', 't10'].includes(bm.id)) return '🎚️ 录音智能降噪与配乐库';
+          return null;
+        }
+      },
+      Toolbox: {
+        name: '效率工具箱专区',
+        headerTitle: '工具箱独立分类',
+        defaultCategories: [
+          '✂️ AI 智能抠图与画质修复',
+          '🖼️ 图片压缩与圆角尺寸处理',
+          '📄 PDF 转换与多语言翻译',
+          '🎨 字体图标与渐变背景生成'
+        ],
+        autoAssignCategory: (bm) => {
+          if (bm.module === 'Toolbox' && bm.modCategory) return bm.modCategory;
+          if (['i1', 'i2', 'p18', 'p19', 'p20', 'p21', 'p22'].includes(bm.id)) return '✂️ AI 智能抠图与画质修复';
+          if (['i3', 'i5', 'i6', 'i7', 'i13', 'i14', 'i15', 'i16'].includes(bm.id)) return '🖼️ 图片压缩与圆角尺寸处理';
+          if (['i17', 'i18', 'b9', 's12'].includes(bm.id)) return '📄 PDF 转换与多语言翻译';
+          if (['i4', 'i8', 'i9', 'i10', 'i11', 'i12', 'i20', 'i21', 'i22', 'i23', 'i24', 'i25', 'p12'].includes(bm.id)) return '🎨 字体图标与渐变背景生成';
+          return null;
+        }
+      },
+      Software: {
+        name: '软件库 & 插件资源专区',
+        headerTitle: '软件库独立分类',
+        defaultCategories: [
+          '💻 绿色便携与直装破解软件',
+          '🎮 三维引擎插件与渲染工具',
+          '🚀 极客脚本与跨平台快传',
+          '🌐 建站部署与云存储图床'
+        ],
+        autoAssignCategory: (bm) => {
+          if (bm.module === 'Software' && bm.modCategory) return bm.modCategory;
+          if (['s5', 's6', 's7', 's8', 's9', 's10'].includes(bm.id)) return '💻 绿色便携与直装破解软件';
+          if (['u9', 'u12', 'u16', 'u18', 'u21', 'm9', 'm10', 'm22', 'm30', 'm31'].includes(bm.id)) return '🎮 三维引擎插件与渲染工具';
+          if (['b7', 's11', 's13', 's15'].includes(bm.id)) return '🚀 极客脚本与跨平台快传';
+          if (['n1', 'n2', 'n3', 'n4', 'n5', 'n7', 'n8', 'n9', 'n12', 'n13'].includes(bm.id)) return '🌐 建站部署与云存储图床';
+          return null;
+        }
+      }
+    };
+
+    let bookmarks = [];
+    let offlineIconMapByUrl = new Map();
+    let offlineIconMapByHost = new Map();
+    let hdUpgradedCache = new Map();
+    let customCategories = { bookmarks: [], Cinema: [], Music: [], Toolbox: [], Software: [] };
+    let recentVisits = [];
+    let currentModule = 'bookmarks';
+    let currentCategory = 'all';
+    let currentEngine = 'local';
+    let searchQuery = '';
+    let isEditMode = false;
+
+    // ==================== 5. 初始化生命周期 ====================
+    function initApp() {
+      initThemeAndAccent();
+      initBrandCustomLogo();
+      buildOfflineIconMaps();
+      loadBookmarksAndSyncVersion();
+      hydrateOfflineBase64Icons();
+      loadRecentVisits();
+      initQuickMemo();
+      renderCategories();
+      renderMainContent();
+      initClockAndCNY();
+      initWeather();
+      initGlobalShortcutsAndScroll();
+    }
+
+    // 左上角品牌自定义 Logo 初始化与上传切换（尺寸已缩小一半为 w-5 h-5）
+    const LOGO_CANDIDATES = ['logo.png', 'logo.svg', 'logo.webp', 'logo.jpg', 'img/logo.png'];
+    let logoCandidateIdx = 0;
+
+    function initBrandCustomLogo() {
+      const savedLogo = localStorage.getItem(CUSTOM_LOGO_KEY) || INITIAL_CUSTOM_LOGO;
+      if (savedLogo) {
+        applyCustomLogoSrc(savedLogo);
+      }
+    }
+
+    function applyCustomLogoSrc(src) {
+      const img = document.getElementById('brandLogoImg');
+      const fb = document.getElementById('brandLogoFallback');
+      const fav = document.getElementById('pageFavicon');
+      if (img && src) {
+        img.src = src;
+        img.classList.remove('hidden');
+        if (fb) fb.classList.add('hidden');
+      }
+      if (fav && src) fav.href = src;
+    }
+
+    window.handleBrandLogoError = function(imgEl) {
+      logoCandidateIdx++;
+      if (logoCandidateIdx < LOGO_CANDIDATES.length) {
+        imgEl.src = LOGO_CANDIDATES[logoCandidateIdx];
+      } else {
+        imgEl.classList.add('hidden');
+        const fb = document.getElementById('brandLogoFallback');
+        if (fb) fb.classList.remove('hidden');
+      }
+    };
+
+    function handleBrandLogoClick(e) {
+      if (isEditMode) {
+        e.stopPropagation();
+        document.getElementById('brandLogoInput').click();
+      } else {
+        switchAppModule('bookmarks', 'all');
+      }
+    }
+
+    function handleBrandLogoUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const base64 = ev.target.result;
+        localStorage.setItem(CUSTOM_LOGO_KEY, base64);
+        applyCustomLogoSrc(base64);
+        showToast('🎉 左上角品牌图标已更换！点击「💾 一键写入更新 index.html」可永久固化');
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
+
+    // ==================== 6. 主题模式与 5 色强调色管理 ====================
+    function initThemeAndAccent() {
+      const savedTheme = localStorage.getItem(THEME_KEY);
+      const htmlEl = document.documentElement;
+      const btn = document.getElementById('themeBtn');
+      if (savedTheme === 'light') {
+        htmlEl.classList.remove('dark');
+        if (btn) btn.textContent = '🌙';
+      } else {
+        htmlEl.classList.add('dark');
+        if (btn) btn.textContent = '☀️';
+      }
+
+      const savedAccent = localStorage.getItem(ACCENT_KEY) || 'indigo';
+      setAccentColor(savedAccent, false);
+    }
+
+    function toggleTheme() {
+      const htmlEl = document.documentElement;
+      const isDark = htmlEl.classList.toggle('dark');
+      localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+      const btn = document.getElementById('themeBtn');
+      if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+      showToast(isDark ? '🌙 已切换至深邃极光暗色模式' : '☀️ 已切换至通透浅色模式');
+    }
+
+    function toggleAccentPopover(e) {
+      if (e) e.stopPropagation();
+      closeRecentPopover();
+      const pop = document.getElementById('accentColorPopover');
+      if (pop) pop.classList.toggle('hidden');
+    }
+
+    function closeAccentPopover() {
+      const pop = document.getElementById('accentColorPopover');
+      if (pop) pop.classList.add('hidden');
+    }
+
+    function setAccentColor(colorName, notify = true) {
+      document.body.setAttribute('data-accent', colorName);
+      localStorage.setItem(ACCENT_KEY, colorName);
+      document.querySelectorAll('.accent-dot').forEach(dot => {
+        const active = dot.getAttribute('data-color') === colorName;
+        dot.classList.toggle('ring-2', active);
+        dot.classList.toggle('ring-offset-1', active);
+        dot.classList.toggle('scale-110', active);
+      });
+      closeAccentPopover();
+      const names = { indigo: '极光靛蓝', violet: '赛博紫罗兰', cyan: '深海青碧', emerald: '翡翠森绿', rose: '落日绯红' };
+      if (notify) showToast(`🎨 主题强调色已切换为：${names[colorName] || colorName}`);
+    }
+
+    // ==================== 7. 双层渐进式超清图标引擎（离线秒开保底 + 后台无感升级 128px 超清源） ====================
+    const BROKEN_BASE64_HOSTS = new Set(['photomosh.com', 'www.world-creator.com', 'www.pbrmax.cn']);
+
+    function buildOfflineIconMaps() {
+      if (!Array.isArray(window.DEFAULT_BOOKMARKS)) return;
+      window.DEFAULT_BOOKMARKS.forEach(item => {
+        if (item.icon && item.icon.startsWith('data:image')) {
+          const h = (item.host || extractDomain(item.url)).toLowerCase();
+          if (BROKEN_BASE64_HOSTS.has(h)) return;
+
+          if (item.url) {
+            offlineIconMapByUrl.set(normalizeUrl(item.url), item.icon);
+            const cleanPath = getOriginAndPath(item.url);
+            if (cleanPath) offlineIconMapByUrl.set(cleanPath, item.icon);
+          }
+          if (h && !(h === 'github.com' && item.id === 'bm_4')) {
+            if (!offlineIconMapByHost.has(h)) offlineIconMapByHost.set(h, item.icon);
+            const rootH = h.replace(/^www\./, '');
+            if (!offlineIconMapByHost.has(rootH)) offlineIconMapByHost.set(rootH, item.icon);
+          }
+        }
+      });
+
+      if (offlineIconMapByHost.has('www.unrealengine.com')) {
+        offlineIconMapByHost.set('www.fab.com', offlineIconMapByHost.get('www.unrealengine.com'));
+        offlineIconMapByHost.set('fab.com', offlineIconMapByHost.get('www.unrealengine.com'));
+      }
+    }
+
+    function hydrateOfflineBase64Icons() {
+      if (offlineIconMapByUrl.size === 0 && Array.isArray(window.DEFAULT_BOOKMARKS)) {
+        buildOfflineIconMaps();
+      }
+      let updated = false;
+      bookmarks.forEach(bm => {
+        const matched = findOfflineBase64(bm.url);
+        if (matched && bm.icon !== matched && !bm.customIcon) {
+          bm.icon = matched;
+          updated = true;
+        }
+      });
+      if (updated) saveBookmarksToStorage();
+    }
+
+    function findOfflineBase64(url) {
+      if (!url) return '';
+      const norm = normalizeUrl(url);
+      const pathKey = getOriginAndPath(url);
+      const h = extractDomain(url).toLowerCase();
+      const rootH = h.replace(/^www\./, '');
+      return (
+        offlineIconMapByUrl.get(norm) ||
+        offlineIconMapByUrl.get(pathKey) ||
+        offlineIconMapByHost.get(h) ||
+        offlineIconMapByHost.get(rootH) ||
+        ''
+      );
+    }
+
+    // 获取图标配置：1.用户自定义 -> 2.官方原版矢量SVG -> 3.已升级缓存的超清源 -> 4.离线Base64保底秒开（同时附带超清升级候选源）
+    function getHighDefIconInfo(bm) {
+      const host = extractDomain(bm.url).toLowerCase();
+      const cleanHost = host.replace(/^www\./, '');
+
+      if (bm.customIcon) {
+        return { primarySrc: bm.customIcon, hd1: '', hd2: '', fb1: '' };
+      }
+
+      // 官方原版矢量 SVG（无限分辨率，最清晰）
+      for (const [domainKey, svgDataUri] of Object.entries(OFFICIAL_BRAND_SVGS)) {
+        if (cleanHost === domainKey || cleanHost.endsWith('.' + domainKey)) {
+          return { primarySrc: svgDataUri, hd1: '', hd2: '', fb1: '' };
+        }
+      }
+
+      // 高清在线源队列（64px~128px）
+      const isPrivateHost = !host || host.includes('hzpipeline.com') || host.includes('192.168.');
+      const favImHd = !isPrivateHost ? `https://favicon.im/${host}?larger=true` : '';
+      const googleHd = !isPrivateHost ? `https://www.google.com/s2/favicons?domain=${host}&sz=128` : '';
+      const iowenHd = !isPrivateHost ? `https://api.iowen.cn/favicon/${host}.png` : '';
+
+      // 若本次会话已成功探测到该域名的高清图标，直接使用高清源
+      if (hdUpgradedCache.has(host)) {
+        return { primarySrc: hdUpgradedCache.get(host), hd1: '', hd2: '', fb1: findOfflineBase64(bm.url) };
+      }
+
+      const offlineBase64 = (bm.icon && bm.icon.startsWith('data:image')) ? bm.icon : findOfflineBase64(bm.url);
+
+      // 若有离线 Base64，先 0ms 秒开显示离线图标（保证 100% 加载出来），同时将高清源挂载到 data-hd1 / data-hd2 供后台无感升级
+      if (offlineBase64) {
+        return {
+          primarySrc: offlineBase64,
+          hd1: favImHd,
+          hd2: googleHd,
+          fb1: iowenHd,
+          host
+        };
+      }
+
+      return {
+        primarySrc: favImHd || googleHd,
+        hd1: '',
+        hd2: '',
+        fb1: googleHd || iowenHd,
+        host
+      };
+    }
+
+    // 当图标加载完成时：若发现当前是 16x16 的低清 Base64 图标，在后台静默加载 128px 高清图标并无感替换
+    window.handleIconLoad = function(imgEl) {
+      if (imgEl.naturalWidth > 0 && imgEl.naturalWidth <= 1 && imgEl.naturalHeight <= 1) {
+        window.handleIconError(imgEl);
+        return;
+      }
+
+      // 若当前显示的图标分辨率较低（< 48px，例如 Chrome 导出的 16x16 Base64），启动后台超清升级
+      if (imgEl.getAttribute('data-hd-upgraded') !== '1' && imgEl.naturalWidth > 0 && imgEl.naturalWidth < 48) {
+        const hd1 = imgEl.getAttribute('data-hd1');
+        const hd2 = imgEl.getAttribute('data-hd2');
+        const host = imgEl.getAttribute('data-host') || '';
+        if (!hd1 && !hd2) return;
+
+        imgEl.setAttribute('data-hd-upgraded', '1');
+        const tryUpgrade = (srcUrl, nextUrl) => {
+          if (!srcUrl) return;
+          const probe = new Image();
+          probe.onload = () => {
+            // 仅当新图标真实宽度 >= 32 且比原图更清晰时才无感替换，绝不替换成空白占位图
+            if (probe.naturalWidth >= 32 && probe.naturalWidth > imgEl.naturalWidth) {
+              imgEl.src = srcUrl;
+              if (host) hdUpgradedCache.set(host, srcUrl);
+            } else if (nextUrl) {
+              tryUpgrade(nextUrl, '');
+            }
+          };
+          probe.onerror = () => {
+            if (nextUrl) tryUpgrade(nextUrl, '');
+          };
+          probe.src = srcUrl;
+        };
+
+        tryUpgrade(hd1, hd2);
+      }
+    };
+
+    window.handleIconError = function(imgEl) {
+      const step = parseInt(imgEl.getAttribute('data-step') || '0', 10);
+      const fb1 = imgEl.getAttribute('data-fb1') || '';
+      const hd2 = imgEl.getAttribute('data-hd2') || '';
+
+      if (step === 0 && fb1 && imgEl.src !== fb1) {
+        imgEl.setAttribute('data-step', '1');
+        imgEl.src = fb1;
+        return;
+      }
+      if (step <= 1 && hd2 && imgEl.src !== hd2) {
+        imgEl.setAttribute('data-step', '2');
+        imgEl.src = hd2;
+        return;
+      }
+      imgEl.style.display = 'none';
+      if (imgEl.nextElementSibling) {
+        imgEl.nextElementSibling.style.display = 'flex';
+      }
+    };
+
+    // ==================== 8. 本地数据存取与跨电脑版本自动同步 ====================
+    function loadBookmarksAndSyncVersion() {
+      const savedVer = parseInt(localStorage.getItem(DATA_VER_KEY) || '0', 10);
+      const isNewerFile = DATA_VERSION > savedVer;
+
+      if (!isNewerFile) {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          const rawCats = localStorage.getItem(CUSTOM_CATS_KEY);
+          if (rawCats) {
+            const parsedCats = JSON.parse(rawCats);
+            if (parsedCats && typeof parsedCats === 'object') {
+              customCategories = { bookmarks: [], Cinema: [], Music: [], Toolbox: [], Software: [], ...parsedCats };
+            }
+          }
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              bookmarks = parsed;
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('读取本地缓存失败:', e);
+        }
+      }
+
+      bookmarks = JSON.parse(JSON.stringify(INITIAL_BOOKMARKS));
+      customCategories = JSON.parse(JSON.stringify(INITIAL_CUSTOM_CATS));
+      localStorage.setItem(DATA_VER_KEY, String(DATA_VERSION));
+      saveBookmarksToStorage();
+      saveCustomCategories();
+    }
+
+    function saveBookmarksToStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
+      } catch (e) {
+        console.error('保存书签失败:', e);
+      }
+    }
+
+    function saveCustomCategories() {
+      localStorage.setItem(CUSTOM_CATS_KEY, JSON.stringify(customCategories));
+    }
+
+    // ==================== 9. 一键直接写入并替换硬盘上的 index.html 文件 ====================
+    let cachedIndexFileHandle = null;
+
+    async function saveDirectlyToIndexHtml() {
+      try {
+        let htmlText = '';
+        try {
+          const res = await fetch(window.location.href, { cache: 'no-store' });
+          htmlText = await res.text();
+        } catch {
+          htmlText = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        }
+
+        const newVer = Date.now();
+        const savedLogo = localStorage.getItem(CUSTOM_LOGO_KEY) || INITIAL_CUSTOM_LOGO || '';
+        const cleanBookmarks = bookmarks.map(b => {
+          const item = { id: b.id, category: b.category, title: b.title, url: b.url, desc: b.desc };
+          if (b.module && b.module !== 'bookmarks') item.module = b.module;
+          if (b.modCategory) item.modCategory = b.modCategory;
+          if (b.customIcon) item.customIcon = b.customIcon;
+          return item;
+        });
+
+        const newSyncBlock = `/*__SYNC_DATA_START__*/
+    const DATA_VERSION = ${newVer};
+    const INITIAL_CUSTOM_LOGO = ${JSON.stringify(savedLogo)};
+    const INITIAL_CUSTOM_CATS = ${JSON.stringify(customCategories)};
+    const INITIAL_BOOKMARKS = ${JSON.stringify(cleanBookmarks, null, 6)};
+    /*__SYNC_DATA_END__*/`;
+
+        const syncRegex = /\/\*__SYNC_DATA_START__\*\/[\s\S]*?\/\*__SYNC_DATA_END__\*\//;
+        if (!syncRegex.test(htmlText)) {
+          showToast('⚠️ 未检测到同步标记，已为你导出完整 JSON 备份');
+          exportData();
+          return;
+        }
+
+        const updatedHtml = htmlText.replace(syncRegex, newSyncBlock);
+        localStorage.setItem(DATA_VER_KEY, String(newVer));
+
+        if (window.showSaveFilePicker) {
+          if (!cachedIndexFileHandle) {
+            cachedIndexFileHandle = await window.showSaveFilePicker({
+              suggestedName: 'index.html',
+              types: [{ description: 'HTML 网页源码文件', accept: { 'text/html': ['.html'] } }]
+            });
+          }
+          const writable = await cachedIndexFileHandle.createWritable();
+          await writable.write(updatedHtml);
+          await writable.close();
+          showToast('✅ 已直接写入并更新 index.html！现在可直接 git push 或拷贝到其他电脑使用');
+        } else {
+          const blob = new Blob([updatedHtml], { type: 'text/html;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'index.html';
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast('💾 已生成最新 index.html 并下载，直接覆盖原文件即可');
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        console.error('写入文件失败:', err);
+        showToast('💡 请在弹出的窗口中选择 index.html 进行保存替换');
+      }
+    }
+
+    // ==================== 10. 最近访问历史系统 ====================
+    function loadRecentVisits() {
+      try {
+        const raw = localStorage.getItem(RECENT_VISITS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) recentVisits = parsed;
+        }
+      } catch (e) {
+        recentVisits = [];
+      }
+    }
+
+    function saveRecentVisits() {
+      localStorage.setItem(RECENT_VISITS_KEY, JSON.stringify(recentVisits));
+    }
+
+    function recordBookmarkVisit(bmId, url) {
+      const bm = bookmarks.find(b => b.id === bmId) || { id: bmId || ('url_' + url), title: extractDomain(url), url };
+      const existingIdx = recentVisits.findIndex(r => r.id === bm.id || r.url === bm.url);
+
+      if (existingIdx > -1) {
+        const rec = recentVisits[existingIdx];
+        rec.count = (rec.count || 1) + 1;
+        rec.lastTime = Date.now();
+        rec.title = bm.title || rec.title;
+        rec.url = bm.url || rec.url;
+        recentVisits.splice(existingIdx, 1);
+        recentVisits.unshift(rec);
+      } else {
+        recentVisits.unshift({
+          id: bm.id,
+          title: bm.title || extractDomain(bm.url),
+          url: bm.url,
+          count: 1,
+          lastTime: Date.now()
+        });
+      }
+
+      if (recentVisits.length > 40) recentVisits = recentVisits.slice(0, 40);
+      saveRecentVisits();
+      renderRecentVisitsList();
+    }
+
+    function toggleRecentPopover(e) {
+      if (e) e.stopPropagation();
+      closeAccentPopover();
+      const pop = document.getElementById('recentVisitsPopover');
+      if (!pop) return;
+      const isHidden = pop.classList.contains('hidden');
+      if (isHidden) {
+        renderRecentVisitsList();
+        pop.classList.remove('hidden');
+      } else {
+        pop.classList.add('hidden');
+      }
+    }
+
+    function closeRecentPopover() {
+      const pop = document.getElementById('recentVisitsPopover');
+      if (pop) pop.classList.add('hidden');
+    }
+
+    function renderRecentVisitsList() {
+      const listEl = document.getElementById('recentVisitsList');
+      if (!listEl) return;
+
+      if (recentVisits.length === 0) {
+        listEl.innerHTML = `
+          <div class="py-8 text-center text-xs text-slate-400 space-y-1">
+            <div class="text-2xl">✨</div>
+            <div>暂无最近访问记录</div>
+            <div class="text-[11px] text-slate-500">点击任意书签卡片后将自动记录访问足迹与次数</div>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = recentVisits.map(item => {
+        const safeId = escapeHtml(item.id);
+        const safeUrl = escapeHtml(item.url);
+        const host = extractDomain(item.url);
+        return `
+          <div class="flex items-center justify-between gap-2 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 transition group">
+            <div onclick="openRecentItem('${safeId}', '${safeUrl}')" class="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer">
+              <span class="w-6 h-6 rounded-lg theme-badge border flex items-center justify-center text-xs font-bold shrink-0">
+                ${escapeHtml((item.title || 'W')[0].toUpperCase())}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-bold text-slate-700 dark:text-slate-200 truncate group-hover:text-indigo-500 transition">${escapeHtml(item.title)}</div>
+                <div class="text-[10px] text-slate-400 truncate font-mono">${escapeHtml(host)}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold theme-badge border">
+                ${item.count || 1} 次
+              </span>
+              <button type="button" onclick="deleteSingleHistory('${safeId}', event)" title="删除此条记录" class="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 flex items-center justify-center text-xs transition">
+                ✕
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openRecentItem(id, url) {
+      recordBookmarkVisit(id, url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function deleteSingleHistory(id, e) {
+      if (e) e.stopPropagation();
+      recentVisits = recentVisits.filter(r => r.id !== id);
+      saveRecentVisits();
+      renderRecentVisitsList();
+      showToast('🗑️ 已删除该条访问记录');
+    }
+
+    function clearAllHistory() {
+      if (recentVisits.length === 0) return;
+      recentVisits = [];
+      saveRecentVisits();
+      renderRecentVisitsList();
+      showToast('🧹 已清空全部最近访问历史');
+    }
+
+    // ==================== 11. 左栏：5 大功能模块与各自独立分类目录 ====================
+    function getModuleCategoriesWithCounts(modName) {
+      const cfg = MODULE_CONFIG[modName] || MODULE_CONFIG.bookmarks;
+      const catMap = new Map();
+
+      cfg.defaultCategories.forEach(c => catMap.set(c, []));
+      (customCategories[modName] || []).forEach(c => {
+        if (!catMap.has(c)) catMap.set(c, []);
+      });
+
+      bookmarks.forEach(bm => {
+        if (modName === 'bookmarks') {
+          if (!bm.module || bm.module === 'bookmarks') {
+            const c = bm.category || '🔥 高频工作台 & 社区';
+            if (!catMap.has(c)) catMap.set(c, []);
+            catMap.get(c).push(bm);
+          }
+        } else {
+          const assignedCat = cfg.autoAssignCategory ? cfg.autoAssignCategory(bm) : (bm.module === modName ? bm.modCategory : null);
+          if (assignedCat) {
+            if (!catMap.has(assignedCat)) catMap.set(assignedCat, []);
+            catMap.get(assignedCat).push(bm);
+          }
+        }
+      });
+
+      return Array.from(catMap.entries());
+    }
+
+    function switchAppModule(modName, cat = 'all') {
+      currentModule = modName;
+      currentCategory = cat;
+
+      document.querySelectorAll('#moduleSwitcher .mod-btn').forEach(btn => {
+        const isCurrent = btn.getAttribute('data-mod') === modName;
+        if (btn.getAttribute('data-mod') === 'bookmarks') {
+          btn.className = isCurrent
+            ? 'mod-btn col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all theme-grad-bg text-white shadow-sm'
+            : 'mod-btn col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
+        } else {
+          btn.className = isCurrent
+            ? 'mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold theme-grad-bg text-white shadow-sm transition-all'
+            : 'mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
+        }
+      });
+
+      const cfg = MODULE_CONFIG[modName] || MODULE_CONFIG.bookmarks;
+      const badge = document.getElementById('currentViewBadge');
+      if (badge) {
+        badge.textContent = `当前视图：${cfg.name} ·${cat === 'all' ? '全部' : cat}`;
+      }
+
+      renderCategories();
+      renderMainContent();
+    }
+
+    function renderCategories() {
+      const nav = document.getElementById('categoryNav');
+      const headerTitle = document.getElementById('sidebarCatHeaderTitle');
+      const totalBadge = document.getElementById('totalCountBadge');
+      const modCount = document.getElementById('modBookmarkCount');
+
+      const allNavCount = bookmarks.filter(b => !b.module || b.module === 'bookmarks').length;
+      if (modCount) modCount.textContent = allNavCount;
+      if (!nav) return;
+
+      const cfg = MODULE_CONFIG[currentModule] || MODULE_CONFIG.bookmarks;
+      if (headerTitle) headerTitle.textContent = cfg.headerTitle;
+
+      const catEntries = getModuleCategoriesWithCounts(currentModule);
+      const totalModItems = catEntries.reduce((acc, [_, list]) => acc + list.length, 0);
+      if (totalBadge) totalBadge.textContent = totalModItems;
+
+      let html = `
+        <button type="button" onclick="switchAppModule('${currentModule}', 'all')" class="nav-btn shrink-0 w-auto lg:w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+          currentCategory === 'all'
+            ? 'theme-badge border font-bold'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 border border-transparent'
+        }">
+          <span class="flex items-center gap-2 truncate"><span class="nav-icon">⚡</span><span>全部${cfg.name}</span></span>
+          <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400">${totalModItems}</span>
+        </button>
+      `;
+
+      if (currentModule === 'bookmarks' || currentModule === 'Toolbox') {
+        html += `
+          <button type="button" onclick="switchAppModule('${currentModule}', 'tools')" class="nav-btn shrink-0 w-auto lg:w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+            currentCategory === 'tools'
+              ? 'theme-badge border font-bold'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 border border-transparent'
+          }">
+            <span class="flex items-center gap-2 truncate"><span class="nav-icon">🛠️</span><span>纯本地小工具</span></span>
+            <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono theme-badge">${BUILTIN_TOOLS.length}</span>
+          </button>
+        `;
+      }
+
+      catEntries.forEach(([catName, items]) => {
+        const active = currentCategory === catName;
+        const m = catName.match(/^(\S+)\s+(.*)$/);
+        const icon = m ? m[1] : (CATEGORY_META[catName]?.icon || '📁');
+        const label = m ? m[2] : catName;
+        const safeCat = catName.replace(/'/g, "\\'");
+
+        html += `
+          <button type="button" onclick="switchAppModule('${currentModule}', '${safeCat}')" class="nav-btn shrink-0 w-auto lg:w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+            active
+              ? 'theme-badge border font-bold'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 border border-transparent'
+          }">
+            <span class="flex items-center gap-2 truncate">
+              <span class="nav-icon text-sm">${icon}</span>
+              <span class="truncate">${escapeHtml(label)}</span>
+            </span>
+            <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400">${items.length}</span>
+          </button>
+        `;
+      });
+
+      nav.innerHTML = html;
+    }
+
+    function promptAddCategory() {
+      const cfg = MODULE_CONFIG[currentModule] || MODULE_CONFIG.bookmarks;
+      const input = prompt(`请在「${cfg.name}」模块下输入新分类名称（可带 Emoji，例如：🌟 精选私藏）：`);
+      if (!input || !input.trim()) return;
+
+      const rawName = input.trim();
+      const formattedName = rawName.match(/^\S+\s+/) ? rawName : `📁 ${rawName}`;
+
+      if (!customCategories[currentModule]) customCategories[currentModule] = [];
+      const existing = getModuleCategoriesWithCounts(currentModule).map(([c]) => c);
+      if (existing.includes(formattedName)) {
+        showToast('💡 该分类已存在，已为你切换至该分类');
+        switchAppModule(currentModule, formattedName);
+        return;
+      }
+
+      customCategories[currentModule].push(formattedName);
+      saveCustomCategories();
+      switchAppModule(currentModule, formattedName);
+      showToast(`🎉 已在「${cfg.name}」下新建分类：${formattedName}`);
+    }
+
+    // ==================== 12. 卡片与主工作区渲染 ====================
+    function createBookmarkCardHtml(bm) {
+      const host = extractDomain(bm.url);
+      const firstChar = ((bm.title || host || 'W').replace(/[^\w\u4e00-\u9fa5]/g, '')[0] || '⚡').toUpperCase();
+      const gradClass = CATEGORY_META[bm.category]?.grad || 'from-indigo-500 to-purple-600';
+      const { primarySrc, hd1, hd2, fb1 } = getHighDefIconInfo(bm);
+
+      const safeUrl = escapeHtml(bm.url || '#');
+      const safeId = escapeHtml(bm.id);
+
+      const editActionsHtml = isEditMode ? `
+        <div class="card-action-bar mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-end gap-1.5 relative z-20">
+          <button type="button" onclick="copyBookmarkUrl(event, '${safeUrl}')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-500 hover:text-white dark:bg-slate-800 dark:hover:bg-indigo-600 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition flex items-center gap-1">
+            <span>📋</span><span>复制链接</span>
+          </button>
+          <button type="button" onclick="openBookmarkModal('${safeId}', event)" class="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-white text-[11px] font-semibold text-amber-600 dark:text-amber-400 transition flex items-center gap-1">
+            <span>✏️</span><span>编辑</span>
+          </button>
+          <button type="button" onclick="deleteBookmark('${safeId}', event)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white text-[11px] font-semibold text-rose-600 dark:text-rose-400 transition flex items-center gap-1">
+            <span>🗑️</span><span>删除</span>
+          </button>
+        </div>
+      ` : '';
+
+      return `
+        <div onclick="handleCardClick(event, '${safeId}', '${safeUrl}')" class="specular-card spotlight-card bookmark-card rounded-2xl p-4 cursor-pointer flex flex-col justify-between group h-full">
+          <div class="flex items-start gap-3.5 relative z-10">
+            <!-- 双层渐进式超清图标容器 -->
+            <div class="icon-wrapper shrink-0 mt-0.5">
+              <div class="icon-container w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800/95 border border-slate-200/80 dark:border-slate-700/70 flex items-center justify-center shadow-sm">
+                ${primarySrc ? `
+                  <img
+                    src="${escapeHtml(primarySrc)}"
+                    data-hd1="${escapeHtml(hd1)}"
+                    data-hd2="${escapeHtml(hd2)}"
+                    data-fb1="${escapeHtml(fb1)}"
+                    data-host="${escapeHtml(host)}"
+                    data-step="0"
+                    alt=""
+                    loading="lazy"
+                    onload="handleIconLoad(this)"
+                    onerror="handleIconError(this)"
+                    class="icon-img w-7 h-7 object-contain rounded-md"
+                  >
+                  <span style="display:none" class="icon-img w-full h-full items-center justify-center font-extrabold text-sm bg-gradient-to-br ${gradClass} text-white rounded-xl">${escapeHtml(firstChar)}</span>
+                ` : `
+                  <span class="icon-img w-full h-full flex items-center justify-center font-extrabold text-sm bg-gradient-to-br ${gradClass} text-white rounded-xl">${escapeHtml(firstChar)}</span>
+                `}
+              </div>
+            </div>
+
+            <!-- 标题与 100% 完整功能说明 -->
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-1.5">
+                <h3 class="font-bold text-[13.5px] text-slate-800 dark:text-slate-100 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors leading-snug break-words">
+                  ${escapeHtml(bm.title || host)}
+                </h3>
+                <span class="launch-arrow text-xs font-mono shrink-0 mt-0.5">↗</span>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed break-words">
+                ${escapeHtml(bm.desc || host)}
+              </p>
+            </div>
+          </div>
+          ${editActionsHtml}
+        </div>
+      `;
+    }
+
+    function renderMainContent() {
+      const container = document.getElementById('mainContent');
+      if (!container) return;
+
+      const q = searchQuery.trim().toLowerCase();
+      let html = '';
+
+      if ((currentModule === 'bookmarks' || currentModule === 'Toolbox') && (currentCategory === 'all' || currentCategory === 'tools')) {
+        html += renderBuiltinToolsSection(q);
+      }
+
+      if (currentCategory !== 'tools') {
+        const catEntries = getModuleCategoriesWithCounts(currentModule);
+
+        catEntries.forEach(([catName, rawList]) => {
+          if (currentCategory !== 'all' && currentCategory !== catName) return;
+
+          const items = rawList.filter(bm => {
+            if (!q) return true;
+            return (
+              (bm.title && bm.title.toLowerCase().includes(q)) ||
+              (bm.desc && bm.desc.toLowerCase().includes(q)) ||
+              (bm.url && bm.url.toLowerCase().includes(q)) ||
+              (catName && catName.toLowerCase().includes(q))
+            );
+          });
+
+          if (items.length === 0 && currentCategory === catName && !q) {
+            html += `
+              <section class="specular-card rounded-3xl p-10 text-center space-y-3">
+                <div class="text-3xl">📂</div>
+                <h3 class="text-sm font-bold">分类「${escapeHtml(catName)}」暂未添加书签</h3>
+                <p class="text-xs text-slate-400">点击下方按钮即可将常用的网站添加到此分类目录中</p>
+                <button type="button" onclick="openBookmarkModal()" class="mt-2 px-4 py-2 rounded-xl theme-grad-bg text-white text-xs font-semibold transition">＋ 立即添加书签至此分类</button>
+              </section>
+            `;
+            return;
+          }
+
+          if (items.length === 0) return;
+
+          const m = catName.match(/^(\S+)\s+(.*)$/);
+          const icon = m ? m[1] : (CATEGORY_META[catName]?.icon || '📁');
+          const cleanTitle = m ? m[2] : catName;
+
+          html += `
+            <section class="space-y-3.5">
+              <div class="flex items-center justify-between px-1">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-8 h-8 rounded-xl bg-slate-200/80 dark:bg-slate-800/90 border border-slate-300/60 dark:border-slate-700/70 flex items-center justify-center text-base shadow-sm">${icon}</span>
+                  <h2 class="text-sm sm:text-base font-extrabold tracking-tight flex items-center gap-2">
+                    <span>${escapeHtml(cleanTitle)}</span>
+                    <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400">${items.length}</span>
+                  </h2>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3.5">
+                ${items.map(bm => createBookmarkCardHtml(bm)).join('')}
+              </div>
+            </section>
+          `;
+        });
+      }
+
+      if (!html) {
+        html = `
+          <div class="specular-card rounded-3xl p-12 text-center space-y-3">
+            <div class="text-4xl">🔭</div>
+            <h3 class="text-base font-bold">未找到匹配的书签或工具</h3>
+            <p class="text-xs text-slate-400">试试其他关键词，或点击上方切换为 Google / Bing 外部搜索</p>
+            <button type="button" onclick="clearSearch()" class="mt-2 px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">清除筛选条件</button>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+      bindSpotlightEvents();
+    }
+
+    function renderBuiltinToolsSection(q) {
+      const matchedTools = BUILTIN_TOOLS.filter(t => {
+        if (!q) return true;
+        return t.title.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q);
+      });
+      if (matchedTools.length === 0) return '';
+
+      return `
+        <section class="space-y-3.5">
+          <div class="flex items-center justify-between px-1">
+            <div class="flex items-center gap-2.5">
+              <span class="w-8 h-8 rounded-xl theme-badge border flex items-center justify-center text-base shadow-sm">🛠️</span>
+              <h2 class="text-sm sm:text-base font-extrabold tracking-tight flex items-center gap-2">
+                <span>纯本地效率小工具</span>
+                <span class="text-[11px] font-mono px-2 py-0.5 rounded-full theme-badge border">${matchedTools.length}</span>
+              </h2>
+            </div>
+            <span class="text-[11px] text-slate-400 hidden sm:inline">纯浏览器本地运算 · 零上传隐私保护</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            ${matchedTools.map(tool => `
+              <div onclick="openToolModal('${tool.type}')" class="specular-card spotlight-card bookmark-card rounded-2xl p-4 cursor-pointer flex items-start gap-3.5 group">
+                <div class="icon-wrapper shrink-0">
+                  <div class="icon-container w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center text-xl shadow-sm">
+                    <span class="icon-img">${tool.icon}</span>
+                  </div>
+                </div>
+                <div class="min-w-0 flex-1 relative z-10">
+                  <div class="flex items-center justify-between gap-1">
+                    <h3 class="font-bold text-[13.5px] text-slate-800 dark:text-slate-100 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">${escapeHtml(tool.title)}</h3>
+                    <span class="launch-arrow text-xs font-bold">⚡</span>
+                  </div>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed break-words">${escapeHtml(tool.desc)}</p>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    function handleCardClick(e, bmId, url) {
+      if (e.target.closest('.card-action-bar')) return;
+      recordBookmarkVisit(bmId, url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function bindSpotlightEvents() {
+      document.querySelectorAll('.spotlight-card').forEach(card => {
+        if (card.dataset.spotlightBound) return;
+        card.dataset.spotlightBound = '1';
+        card.addEventListener('mousemove', e => {
+          const rect = card.getBoundingClientRect();
+          card.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+          card.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+        });
+      });
+    }
+
+    // ==================== 13. 搜索与快筛逻辑 ====================
+    function setSearchEngine(engine) {
+      currentEngine = engine;
+      document.querySelectorAll('#searchEngineTabs .engine-tab').forEach(tab => {
+        const isCurrent = tab.getAttribute('data-engine') === engine;
+        tab.className = isCurrent
+          ? 'engine-tab px-3.5 py-1.5 rounded-full font-semibold theme-solid-bg text-white shadow-sm transition-all flex items-center gap-1.5'
+          : 'engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5';
+      });
+
+      const cfg = SEARCH_ENGINES[engine] || SEARCH_ENGINES.local;
+      const input = document.getElementById('searchInput');
+      const submitBtn = document.getElementById('searchSubmitBtn');
+      if (input) input.placeholder = cfg.placeholder;
+      if (submitBtn) submitBtn.textContent = cfg.btnText;
+
+      if (engine === 'local') {
+        searchQuery = input ? input.value : '';
+        renderMainContent();
+      }
+    }
+
+    function handleSearchInput(val) {
+      searchQuery = val;
+      const clearBtn = document.getElementById('clearSearchBtn');
+      if (clearBtn) clearBtn.classList.toggle('hidden', !val);
+      if (currentEngine === 'local') {
+        renderMainContent();
+      }
+    }
+
+    function handleSearchSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('searchInput');
+      const val = (input ? input.value : '').trim();
+      if (currentEngine === 'local') {
+        searchQuery = val;
+        renderMainContent();
+      } else {
+        if (!val) {
+          showToast('💡 请先在搜索框输入关键词');
+          return;
+        }
+        const cfg = SEARCH_ENGINES[currentEngine];
+        if (cfg && cfg.url) {
+          window.open(cfg.url + encodeURIComponent(val), '_blank', 'noopener,noreferrer');
+        }
+      }
+    }
+
+    function clearSearch() {
+      searchQuery = '';
+      const input = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('clearSearchBtn');
+      if (input) input.value = '';
+      if (clearBtn) clearBtn.classList.add('hidden');
+      renderMainContent();
+    }
+
+function quickFilterTag(tag) {
+      currentModule = 'bookmarks';
+      currentCategory = 'all';
+      setSearchEngine('local');
+      const input = document.getElementById('searchInput');
+      if (input) input.value = tag;
+      handleSearchInput(tag);
+      renderCategories();
+      showToast(`🔥 已快速筛选「${tag}」相关站点`);
+    }
+
+    // 补充 UE5 / Epic / Fab / HuggingFace 官方矢量图标至第一层矢量库
+    Object.assign(OFFICIAL_BRAND_SVGS, {
+      'openai.com': OFFICIAL_BRAND_SVGS['chatgpt.com'],
+      'unrealengine.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22C6.486 22 2 17.514 2 12S6.486 2 12 2s10 4.486 10 10-4.486 10-10 10zm3.5-14.5c-.828 0-1.5.672-1.5 1.5v5.25c0 .414-.336.75-.75.75s-.75-.336-.75-.75V8.5c0-1.105-.895-2-2-2s-2 .895-2 2v6.25c0 1.519 1.231 2.75 2.75 2.75.95 0 1.787-.482 2.283-1.215.424.725 1.21 1.215 2.117 1.215 1.381 0 2.5-1.119 2.5-2.5V9c0-.828-.672-1.5-1.5-1.5z"/></svg>`,
+      'epicgames.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22C6.486 22 2 17.514 2 12S6.486 2 12 2s10 4.486 10 10-4.486 10-10 10z"/></svg>`,
+      'fab.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="%236366f1"/><path d="M7 7h10v3H10v2h6v3h-6v4H7V7z" fill="white"/></svg>`,
+      'huggingface.co': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="%23FFD21E"/><circle cx="8.5" cy="9.5" r="1.5" fill="%231E293B"/><circle cx="15.5" cy="9.5" r="1.5" fill="%231E293B"/><path d="M8 14.5c1.2 2 6.8 2 8 0" stroke="%231E293B" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>`
+    });
+
+    // ==================== 14. 灵感便签 / 随手备忘录系统 ====================
+    function initQuickMemo() {
+      const area = document.getElementById('quickMemoArea');
+      if (!area) return;
+      const saved = localStorage.getItem(MEMO_STORAGE_KEY) || '';
+      area.value = saved;
+      updateMemoCount(saved);
+    }
+
+    function handleMemoInput(val) {
+      localStorage.setItem(MEMO_STORAGE_KEY, val);
+      updateMemoCount(val);
+      const status = document.getElementById('memoSaveStatus');
+      if (status) {
+        const now = new Date();
+        status.textContent = `已保存 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      }
+    }
+
+    function updateMemoCount(val) {
+      const el = document.getElementById('memoCharCount');
+      if (el) el.textContent = `${(val || '').length} 字`;
+    }
+
+    function insertMemoTimestamp() {
+      const area = document.getElementById('quickMemoArea');
+      if (!area) return;
+      const now = new Date();
+      const stamp = `[${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}] `;
+      const prefix = area.value && !area.value.endsWith('\n') ? '\n' : '';
+      area.value += prefix + stamp;
+      area.focus();
+      handleMemoInput(area.value);
+    }
+
+    function copyMemoContent() {
+      const area = document.getElementById('quickMemoArea');
+      if (!area || !area.value.trim()) {
+        showToast('💡 便签内容为空');
+        return;
+      }
+      navigator.clipboard.writeText(area.value).then(() => {
+        showToast('📋 便签内容已复制到剪贴板');
+      });
+    }
+
+    function clearMemoContent() {
+      const area = document.getElementById('quickMemoArea');
+      if (!area || !area.value) return;
+      if (confirm('确定要清空当前便签备忘录的所有内容吗？')) {
+        area.value = '';
+        handleMemoInput('');
+        showToast('🧹 便签内容已清空');
+      }
+    }
+
+    // ==================== 15. 回到顶部与全局快捷键 ====================
+    function initGlobalShortcutsAndScroll() {
+      document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const input = document.getElementById('searchInput');
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        } else if (e.key === 'Escape') {
+          closeBookmarkModal();
+          closeToolModal();
+          closeRecentPopover();
+          closeAccentPopover();
+        }
+      });
+
+      document.addEventListener('click', () => {
+        closeRecentPopover();
+        closeAccentPopover();
+      });
+
+      const backBtn = document.getElementById('backToTopBtn');
+      window.addEventListener('scroll', () => {
+        if (!backBtn) return;
+        if (window.scrollY > 260) {
+          backBtn.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+          backBtn.classList.add('opacity-100', 'translate-y-0');
+        } else {
+          backBtn.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+          backBtn.classList.remove('opacity-100', 'translate-y-0');
+        }
+      }, { passive: true });
+    }
+
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ==================== 16. 管理模式 / 书签增删改查 ====================
+    function toggleEditMode() {
+      isEditMode = !isEditMode;
+      const textEl = document.getElementById('editModeText');
+      const btnEl = document.getElementById('editModeBtn');
+      const dotEl = document.getElementById('editStatusDot');
+      const bannerEl = document.getElementById('editModeBanner');
+      const logoOverlay = document.getElementById('brandLogoEditOverlay');
+
+      if (textEl) textEl.textContent = isEditMode ? '退出管理' : '管理模式';
+      if (btnEl) {
+        btnEl.className = isEditMode
+          ? 'px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-amber-500/30'
+          : 'px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border border-slate-200/70 dark:border-slate-700/70';
+      }
+      if (dotEl) {
+        dotEl.className = isEditMode ? 'w-2 h-2 rounded-full bg-amber-500 animate-ping' : 'w-1.5 h-1.5 rounded-full bg-slate-400';
+      }
+      if (bannerEl) bannerEl.classList.toggle('hidden', !isEditMode);
+      if (logoOverlay) logoOverlay.classList.toggle('hidden', !isEditMode);
+
+      renderMainContent();
+      showToast(isEditMode ? '⚙️ 已进入管理模式：可编辑卡片、点击左上角换 Logo，或点击左下角一键保存至 index.html' : '✅ 已退出管理模式');
+    }
+
+    function populateModalCategories(modName, selectedCat = '') {
+      const bmCat = document.getElementById('bmCategory');
+      if (!bmCat) return;
+      const cats = getModuleCategoriesWithCounts(modName).map(([c]) => c);
+      bmCat.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+      if (selectedCat && cats.includes(selectedCat)) {
+        bmCat.value = selectedCat;
+      }
+    }
+
+    function openBookmarkModal(id = null, event = null) {
+      if (event) event.stopPropagation();
+      const modal = document.getElementById('bookmarkModal');
+      const titleEl = document.getElementById('modalTitle');
+      const bmId = document.getElementById('bmId');
+      const bmMod = document.getElementById('bmModuleSelect');
+      const bmTitle = document.getElementById('bmTitle');
+      const bmUrl = document.getElementById('bmUrl');
+      const bmNewCat = document.getElementById('bmNewCategory');
+      const bmDesc = document.getElementById('bmDesc');
+      const bmCustomIcon = document.getElementById('bmCustomIcon');
+
+      bmNewCat.value = '';
+
+      if (id) {
+        const target = bookmarks.find(b => b.id === id);
+        if (!target) return;
+        const targetMod = target.module || currentModule;
+        titleEl.textContent = '编辑书签信息';
+        bmId.value = target.id;
+        bmMod.value = targetMod;
+        const targetCat = targetMod === 'bookmarks'
+          ? target.category
+          : (target.modCategory || (MODULE_CONFIG[targetMod]?.autoAssignCategory?.(target)));
+        populateModalCategories(targetMod, targetCat);
+        bmTitle.value = target.title || '';
+        bmUrl.value = target.url || '';
+        bmDesc.value = target.desc || '';
+        bmCustomIcon.value = target.customIcon || '';
+      } else {
+        titleEl.textContent = '新增书签';
+        bmId.value = '';
+        bmMod.value = currentModule;
+        const defaultCat = (currentCategory !== 'all' && currentCategory !== 'tools') ? currentCategory : '';
+        populateModalCategories(currentModule, defaultCat);
+        bmTitle.value = '';
+        bmUrl.value = '';
+        bmDesc.value = '';
+        bmCustomIcon.value = '';
+      }
+
+      modal.classList.remove('hidden');
+      setTimeout(() => bmTitle.focus(), 50);
+    }
+
+    function closeBookmarkModal() {
+      const modal = document.getElementById('bookmarkModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function saveBookmark(e) {
+      e.preventDefault();
+      const id = document.getElementById('bmId').value.trim();
+      const targetMod = document.getElementById('bmModuleSelect').value;
+      const title = document.getElementById('bmTitle').value.trim();
+      let url = document.getElementById('bmUrl').value.trim();
+      const selectCat = document.getElementById('bmCategory').value;
+      const newCat = document.getElementById('bmNewCategory').value.trim();
+      const desc = document.getElementById('bmDesc').value.trim();
+      const customIcon = document.getElementById('bmCustomIcon').value.trim();
+
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      const finalCat = newCat ? (newCat.match(/^\S+\s/) ? newCat : `📁 ${newCat}`) : selectCat;
+
+      if (newCat) {
+        if (!customCategories[targetMod]) customCategories[targetMod] = [];
+        if (!customCategories[targetMod].includes(finalCat)) {
+          customCategories[targetMod].push(finalCat);
+          saveCustomCategories();
+        }
+      }
+
+      if (id) {
+        const idx = bookmarks.findIndex(b => b.id === id);
+        if (idx > -1) {
+          bookmarks[idx] = {
+            ...bookmarks[idx],
+            title,
+            url,
+            module: targetMod,
+            category: targetMod === 'bookmarks' ? finalCat : (bookmarks[idx].category || '🔥 高频工作台 & 社区'),
+            modCategory: targetMod !== 'bookmarks' ? finalCat : undefined,
+            desc: desc || extractDomain(url),
+            customIcon: customIcon || undefined
+          };
+          showToast('✅ 书签修改已保存（日常自动留存，如需更新文件请点左下角💾）');
+        }
+      } else {
+        bookmarks.unshift({
+          id: 'bm_' + Date.now(),
+          title,
+          url,
+          module: targetMod,
+          category: targetMod === 'bookmarks' ? finalCat : '🔥 高频工作台 & 社区',
+          modCategory: targetMod !== 'bookmarks' ? finalCat : undefined,
+          desc: desc || extractDomain(url),
+          icon: findOfflineBase64(url) || undefined,
+          customIcon: customIcon || undefined
+        });
+        showToast('🎉 新书签已添加至工作台');
+      }
+
+      saveBookmarksToStorage();
+      closeBookmarkModal();
+      switchAppModule(targetMod, finalCat);
+    }
+
+    function deleteBookmark(id, event) {
+      if (event) event.stopPropagation();
+      const target = bookmarks.find(b => b.id === id);
+      if (!target) return;
+      if (confirm(`确定要删除书签「${target.title}」吗？`)) {
+        bookmarks = bookmarks.filter(b => b.id !== id);
+        saveBookmarksToStorage();
+        renderCategories();
+        renderMainContent();
+        showToast(`🗑️ 已删除「${target.title}」`);
+      }
+    }
+
+    function copyBookmarkUrl(event, url) {
+      if (event) event.stopPropagation();
+      navigator.clipboard.writeText(url).then(() => {
+        showToast('📋 网址链接已复制到剪贴板');
+      });
+    }
+
+    function exportData() {
+      const dataStr = JSON.stringify(bookmarks, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bookmarks_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('📤 已导出 JSON 书签备份文件');
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            bookmarks = parsed;
+            hydrateOfflineBase64Icons();
+            saveBookmarksToStorage();
+            renderCategories();
+            renderMainContent();
+            showToast(`📥 成功导入并恢复 ${parsed.length} 个书签`);
+          } else {
+            showToast('❌ JSON 文件格式不正确');
+          }
+        } catch (err) {
+          showToast('❌ 解析 JSON 备份文件失败');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function resetDefaultData() {
+      if (confirm('确定要重置回初始精选书签数据并重新匹配全部超清图标吗？')) {
+        bookmarks = JSON.parse(JSON.stringify(INITIAL_BOOKMARKS));
+        customCategories = JSON.parse(JSON.stringify(INITIAL_CUSTOM_CATS));
+        hdUpgradedCache.clear();
+        saveCustomCategories();
+        buildOfflineIconMaps();
+        hydrateOfflineBase64Icons();
+        saveBookmarksToStorage();
+        switchAppModule('bookmarks', 'all');
+        showToast('🔄 已恢复为最新精选书签数据并开启双层超清图标引擎');
+      }
+    }
+
+    // ==================== 17. 右栏实时时钟 + Open-Meteo 天气 + 春节倒计时 ====================
+    const CNY_TABLE = [
+      { year: 2026, zodiac: '丙午马年', date: '2026-02-17T00:00:00', label: '2026.02.17 正月初一' },
+      { year: 2027, zodiac: '丁未羊年', date: '2027-02-06T00:00:00', label: '2027.02.06 正月初一' },
+      { year: 2028, zodiac: '戊申猴年', date: '2028-01-26T00:00:00', label: '2028.01.26 正月初一' },
+      { year: 2029, zodiac: '己酉鸡年', date: '2029-02-13T00:00:00', label: '2029.02.13 正月初一' },
+      { year: 2030, zodiac: '庚戌狗年', date: '2030-02-03T00:00:00', label: '2030.02.03 正月初一' }
+    ];
+
+    function initClockAndCNY() {
+      const tick = () => {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+
+        document.getElementById('clockHM').textContent = `${hh}:${mm}`;
+        document.getElementById('clockSec').textContent = ss;
+        document.getElementById('clockDate').textContent = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+        document.getElementById('clockWeekday').textContent = weekdays[now.getDay()];
+
+        const h = now.getHours();
+        let greetText = '🌙 夜深注意休息';
+        if (h >= 5 && h < 9) greetText = '🌅 早安·元气开启';
+        else if (h >= 9 && h < 12) greetText = '⚡ 黄金专注时段';
+        else if (h >= 12 && h < 14) greetText = '🍱 午间小憩充能';
+        else if (h >= 14 && h < 18) greetText = '☀️ 高效创作中';
+        else if (h >= 18 && h < 22) greetText = '🌆 晚间灵感时刻';
+        document.getElementById('timeGreeting').textContent = greetText;
+
+        const nextCNY = CNY_TABLE.find(item => new Date(item.date).getTime() > now.getTime()) || CNY_TABLE[CNY_TABLE.length - 1];
+        const targetMs = new Date(nextCNY.date).getTime();
+        const diffSec = Math.max(0, Math.floor((targetMs - now.getTime()) / 1000));
+
+        const days = Math.floor(diffSec / 86400);
+        const hours = Math.floor((diffSec % 86400) / 3600);
+        const mins = Math.floor((diffSec % 3600) / 60);
+        const secs = diffSec % 60;
+
+        document.getElementById('cnyTitle').textContent = `${nextCNY.year}${nextCNY.zodiac}春节`;
+        document.getElementById('cnyTargetDate').textContent = nextCNY.label;
+        document.getElementById('cnyDays').textContent = String(days).padStart(2, '0');
+        document.getElementById('cnyHours').textContent = String(hours).padStart(2, '0');
+        document.getElementById('cnyMinutes').textContent = String(mins).padStart(2, '0');
+        document.getElementById('cnySeconds').textContent = String(secs).padStart(2, '0');
+
+        const totalYearMs = 365 * 86400 * 1000;
+        const passedPct = Math.min(100, Math.max(5, ((totalYearMs - (targetMs - now.getTime())) / totalYearMs) * 100)).toFixed(1);
+        document.getElementById('cnyProgressText').textContent = `年度周期已推进 ${passedPct}%`;
+        document.getElementById('cnyProgressBar').style.width = `${passedPct}%`;
+      };
+
+      tick();
+      setInterval(tick, 1000);
+    }
+
+    function initWeather() {
+      const savedCity = localStorage.getItem('pro_cockpit_city') || 'auto';
+      const selector = document.getElementById('citySelector');
+      if (selector) selector.value = savedCity;
+      changeWeatherCity(savedCity, false);
+    }
+
+    function changeWeatherCity(val, notify = true) {
+      localStorage.setItem('pro_cockpit_city', val);
+      if (val === 'auto') {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            pos => fetchWeatherData(pos.coords.latitude, pos.coords.longitude, '本地定位'),
+            () => fetchWeatherData(31.2304, 121.4737, '上海(默认)')
+          );
+        } else {
+          fetchWeatherData(31.2304, 121.4737, '上海(默认)');
+        }
+      } else {
+        const [lat, lon, name] = val.split(',');
+        fetchWeatherData(parseFloat(lat), parseFloat(lon), name);
+        if (notify) showToast(`⛅ 已切换实时气象城市至：${name}`);
+      }
+    }
+
+    async function fetchWeatherData(lat, lon, cityName) {
+      const cityBadge = document.getElementById('weatherCityBadge');
+      if (cityBadge) cityBadge.textContent = cityName;
+
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data || !data.current) throw new Error('Weather error');
+
+        const cur = data.current;
+        const wmo = parseWMOWeather(cur.weather_code);
+
+        document.getElementById('weatherIcon').textContent = wmo.icon;
+        document.getElementById('weatherTemp').textContent = Math.round(cur.temperature_2m);
+        document.getElementById('weatherDesc').textContent = wmo.desc;
+        document.getElementById('weatherFeels').textContent = `${Math.round(cur.apparent_temperature)}°`;
+        document.getElementById('weatherHumid').textContent = `${cur.relative_humidity_2m}%`;
+        document.getElementById('weatherWind').textContent = `${Math.round(cur.wind_speed_10m)}km/h`;
+      } catch (err) {
+        document.getElementById('weatherDesc').textContent = '气象离线缓存模式';
+      }
+    }
+
+    function parseWMOWeather(code) {
+      if (code === 0) return { icon: '☀️', desc: '晴朗无云 · 适宜创作' };
+      if (code === 1 || code === 2) return { icon: '⛅', desc: '晴间多云 · 体感舒适' };
+      if (code === 3) return { icon: '☁️', desc: '阴天多云 · 光线柔和' };
+      if (code >= 45 && code <= 48) return { icon: '🌫️', desc: '轻雾弥漫 · 注意出行' };
+      if (code >= 51 && code <= 67) return { icon: '🌧️', desc: '微雨阵雨 · 记得带伞' };
+      if (code >= 71 && code <= 77) return { icon: '❄️', desc: '降雪天气 · 注意保暖' };
+      if (code >= 80 && code <= 82) return { icon: '🌦️', desc: '局部阵雨 · 空气清新' };
+      if (code >= 95) return { icon: '⛈️', desc: '雷阵雨 · 留意天气变化' };
+      return { icon: '🌤️', desc: '天气良好' };
+    }
+
+    // ==================== 18. 内置 4 大本地效率工具弹窗 ====================
+    function openToolModal(type) {
+      const modal = document.getElementById('toolModal');
+      const title = document.getElementById('toolModalTitle');
+      const body = document.getElementById('toolModalBody');
+      if (!modal || !body) return;
+
+      if (type === 'json') {
+        title.innerHTML = '📋 JSON 格式化 / 压缩 / 校验器';
+        body.innerHTML = `
+          <textarea id="jsonInput" rows="8" placeholder="在此粘贴需要格式化或校验的 JSON 字符串..." class="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-xs focus:outline-none focus:border-indigo-500"></textarea>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="runJsonTool('pretty')" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">✨ 格式化美化</button>
+            <button type="button" onclick="runJsonTool('minify')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs font-semibold transition">📦 压缩为单行</button>
+            <button type="button" onclick="runJsonTool('copy')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition">📋 复制结果</button>
+          </div>
+          <div id="jsonStatus" class="text-xs font-mono text-slate-400">等待输入...</div>
+        `;
+      } else if (type === 'text') {
+        title.innerHTML = '📝 字数统计 & 文本按行去重工具';
+        body.innerHTML = `
+          <textarea id="textToolInput" oninput="updateTextStats()" rows="7" placeholder="在此输入或粘贴文本、Prompt 提示词或列表..." class="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:border-indigo-500"></textarea>
+          <div class="grid grid-cols-4 gap-2 text-center text-xs">
+            <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800"><div class="text-slate-400">总字符</div><div id="stTotal" class="text-base font-extrabold font-mono theme-text">0</div></div>
+            <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800"><div class="text-slate-400">中文字数</div><div id="stCN" class="text-base font-extrabold font-mono text-purple-500">0</div></div>
+            <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800"><div class="text-slate-400">英文单词</div><div id="stEN" class="text-base font-extrabold font-mono text-cyan-500">0</div></div>
+            <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800"><div class="text-slate-400">总行数</div><div id="stLines" class="text-base font-extrabold font-mono text-emerald-500">0</div></div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="runTextDedup()" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">🧹 按行去重并清理空行</button>
+            <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('textToolInput').value);showToast('📋 已复制文本')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition">📋 复制文本</button>
+          </div>
+        `;
+      } else if (type === 'radius') {
+        title.innerHTML = '🖼️ 本地图片圆角合成器 (Canvas 零上传)';
+        body.innerHTML = `
+          <div class="space-y-3 text-xs">
+            <input type="file" id="radiusFileInput" accept="image/*" onchange="previewRadiusImage()" class="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-500/15 file:text-indigo-500 hover:file:bg-indigo-500/25 cursor-pointer">
+            <div class="flex items-center gap-3">
+              <span class="font-semibold shrink-0">圆角半径:</span>
+              <input type="range" id="radiusSlider" min="0" max="200" value="36" oninput="previewRadiusImage()" class="flex-1 accent-indigo-600">
+              <span id="radiusValLabel" class="font-mono font-bold theme-text w-12 text-right">36px</span>
+            </div>
+            <div class="flex justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-4 border border-dashed border-slate-300 dark:border-slate-700">
+              <canvas id="radiusCanvas" class="max-h-56 max-w-full rounded shadow-sm"></canvas>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" onclick="downloadRadiusImage()" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">💾 导出透明 PNG</button>
+            </div>
+          </div>
+        `;
+      } else if (type === 'time') {
+        const nowUnix = Math.floor(Date.now() / 1000);
+        title.innerHTML = '⏱️ 时间戳 & UE5 Shader 颜色转换器';
+        body.innerHTML = `
+          <div class="space-y-4 text-xs">
+            <div class="p-3.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 space-y-2">
+              <div class="font-bold text-slate-700 dark:text-slate-200">1. Unix 时间戳转换 (当前: <span class="font-mono theme-text">${nowUnix}</span>)</div>
+              <div class="flex gap-2">
+                <input type="text" id="tsInput" value="${nowUnix}" placeholder="输入秒或毫秒时间戳" class="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono">
+                <button type="button" onclick="convertTimestamp()" class="px-3.5 py-2 rounded-lg theme-solid-bg text-white font-semibold">转换</button>
+              </div>
+              <div id="tsOutput" class="font-mono text-emerald-500 font-semibold">${new Date().toLocaleString()}</div>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 space-y-2">
+              <div class="font-bold text-slate-700 dark:text-slate-200">2. HEX 颜色转 RGB & UE5 Material 线性浮点 (0.0 ~ 1.0)</div>
+              <div class="flex items-center gap-2">
+                <input type="color" id="colorPicker" value="#6366f1" oninput="syncColorHex(this.value)" class="w-10 h-9 rounded cursor-pointer bg-transparent">
+                <input type="text" id="hexInput" value="#6366f1" oninput="syncColorHex(this.value)" class="w-28 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono">
+                <span id="rgbOutput" class="font-mono text-slate-600 dark:text-slate-300">rgb(99, 102, 241)</span>
+              </div>
+              <div id="ueFloatOutput" class="p-2 rounded-lg bg-slate-200/70 dark:bg-slate-900 font-mono theme-text">
+                UE Linear Vector3: (R=0.388, G=0.400, B=0.945)
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeToolModal() {
+      const modal = document.getElementById('toolModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function runJsonTool(mode) {
+      const el = document.getElementById('jsonInput');
+      const status = document.getElementById('jsonStatus');
+      if (!el) return;
+      if (mode === 'copy') {
+        navigator.clipboard.writeText(el.value);
+        showToast('📋 JSON 已复制到剪贴板');
+        return;
+      }
+      try {
+        const obj = JSON.parse(el.value);
+        el.value = mode === 'pretty' ? JSON.stringify(obj, null, 2) : JSON.stringify(obj);
+        status.textContent = '✅ JSON 校验通过';
+        status.className = 'text-xs font-mono text-emerald-500';
+      } catch (err) {
+        status.textContent = '❌ JSON 语法错误: ' + err.message;
+        status.className = 'text-xs font-mono text-rose-500';
+      }
+    }
+
+    function updateTextStats() {
+      const val = (document.getElementById('textToolInput')?.value) || '';
+      document.getElementById('stTotal').textContent = val.length;
+      document.getElementById('stCN').textContent = (val.match(/[\u4e00-\u9fa5]/g) || []).length;
+      document.getElementById('stEN').textContent = (val.trim().match(/[a-zA-Z0-9_]+/g) || []).length;
+      document.getElementById('stLines').textContent = val ? val.split(/\r?\n/).length : 0;
+    }
+
+    function runTextDedup() {
+      const el = document.getElementById('textToolInput');
+      if (!el) return;
+      const lines = el.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      el.value = Array.from(new Set(lines)).join('\n');
+      updateTextStats();
+      showToast('🧹 已完成按行去重与空行清理');
+    }
+
+    let loadedRadiusImg = null;
+    function previewRadiusImage() {
+      const fileInput = document.getElementById('radiusFileInput');
+      const slider = document.getElementById('radiusSlider');
+      const label = document.getElementById('radiusValLabel');
+      const canvas = document.getElementById('radiusCanvas');
+      if (!canvas || !slider) return;
+      const r = parseInt(slider.value, 10);
+      if (label) label.textContent = r + 'px';
+
+      const draw = img => {
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const radius = Math.min(r, canvas.width / 2, canvas.height / 2);
+        ctx.beginPath();
+        ctx.moveTo(radius, 0);
+        ctx.arcTo(canvas.width, 0, canvas.width, canvas.height, radius);
+        ctx.arcTo(canvas.width, canvas.height, 0, canvas.height, radius);
+        ctx.arcTo(0, canvas.height, 0, 0, radius);
+        ctx.arcTo(0, 0, canvas.width, 0, radius);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, 0, 0);
+      };
+
+      if (fileInput && fileInput.files && fileInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const img = new Image();
+          img.onload = () => { loadedRadiusImg = img; draw(img); };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else if (loadedRadiusImg) {
+        draw(loadedRadiusImg);
+      }
+    }
+
+    function downloadRadiusImage() {
+      const canvas = document.getElementById('radiusCanvas');
+      if (!canvas || !loadedRadiusImg) {
+        showToast('💡 请先选择一张本地图片');
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'rounded_image.png';
+      a.click();
+      showToast('💾 已导出圆角透明 PNG');
+    }
+
+    function convertTimestamp() {
+      const raw = document.getElementById('tsInput').value.trim();
+      const num = Number(raw);
+      if (isNaN(num)) return;
+      const ms = raw.length <= 10 ? num * 1000 : num;
+      document.getElementById('tsOutput').textContent = new Date(ms).toLocaleString();
+    }
+
+    function syncColorHex(val) {
+      const hex = val.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+      document.getElementById('colorPicker').value = hex;
+      document.getElementById('hexInput').value = hex;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      document.getElementById('rgbOutput').textContent = `rgb(${r}, ${g}, ${b})`;
+      document.getElementById('ueFloatOutput').textContent =
+        `UE Linear Vector3: (R=${(r / 255).toFixed(3)}, G=${(g / 255).toFixed(3)}, B=${(b / 255).toFixed(3)})`;
+    }
+
+    // ==================== 19. 通用辅助函数 ====================
+    function normalizeUrl(url) {
+      return (url || '').trim().replace(/\/$/, '').toLowerCase();
+    }
+
+    function getOriginAndPath(url) {
+      try {
+        const u = new URL(url);
+        return (u.origin + u.pathname).replace(/\/$/, '').toLowerCase();
+      } catch {
+        return '';
+      }
+    }
+
+    function extractDomain(url) {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return '';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function showToast(msg) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const item = document.createElement('div');
+      item.className = 'toast-animate specular-card px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-xl border border-indigo-500/30 flex items-center gap-2';
+      item.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+      container.appendChild(item);
+      setTimeout(() => {
+        item.style.opacity = '0';
+        item.style.transform = 'translateY(8px)';
+        item.style.transition = 'all 0.25s ease';
+        setTimeout(() => item.remove(), 250);
+      }, 2600);
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
