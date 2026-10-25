@@ -24,7 +24,7 @@
     }
   </script>
 
-  <style>
+  <style id="coreCustomStyles">
     /* ==========================================================
        1. 动态主题色变量系统 (支持 5 种高定主题色实时切换)
        ========================================================== */
@@ -70,7 +70,7 @@
       box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03), 0 8px 24px -4px rgba(15, 23, 42, 0.04);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, opacity 0.2s ease;
     }
     .dark .specular-card {
       background: rgba(17, 23, 38, 0.78);
@@ -79,7 +79,7 @@
     }
 
     /* ==========================================================
-       2. 五重书签微交互动效系统
+       2. 五重书签微交互动效系统 + 拖拽排序视觉反馈
        ========================================================== */
     .spotlight-card { position: relative; overflow: hidden; }
     .spotlight-card::before {
@@ -112,6 +112,24 @@
       border-color: rgba(var(--accent-rgb), 0.55) !important;
     }
     .bookmark-card:active { transform: translateY(-1px) scale(0.99); }
+
+    /* 管理模式下拖拽排序样式 */
+    .bookmark-card[draggable="true"] {
+      cursor: grab;
+    }
+    .bookmark-card[draggable="true"]:active {
+      cursor: grabbing;
+    }
+    .bookmark-card.dragging-card {
+      opacity: 0.38 !important;
+      transform: scale(0.95) !important;
+      border: 2px dashed var(--accent) !important;
+    }
+    .bookmark-card.drag-over-card {
+      border: 2px solid var(--accent) !important;
+      box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.25), 0 16px 32px -6px rgba(var(--accent-rgb), 0.3) !important;
+      transform: translateY(-4px) scale(1.02) !important;
+    }
 
     .icon-wrapper { position: relative; z-index: 2; }
     .icon-wrapper::before {
@@ -152,7 +170,6 @@
     }
     .bookmark-card:hover .icon-container::after { left: 150%; }
 
-    /* 超清图标渲染增强 */
     .icon-img {
       image-rendering: -webkit-optimize-contrast;
       image-rendering: high-quality;
@@ -187,7 +204,7 @@
       from { opacity: 0; transform: translateY(14px) scale(0.96); }
       to { opacity: 1; transform: translateY(0) scale(1); }
     }
-    .toast-animate { animation: toastSlideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .toast-animate { animation: toastSlideUp 0.24s cubic-bezier(0.34, 1.56, 0.64, 1); }
   </style>
 </head>
 <body data-accent="indigo" class="bg-slate-100/85 text-slate-800 dark:bg-darkBg dark:text-slate-100 min-h-screen flex flex-col transition-colors duration-300 font-sans bg-dot-matrix relative selection:bg-indigo-500 selection:text-white overflow-x-hidden">
@@ -203,11 +220,11 @@
   <div class="flex-1 w-full max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-6 py-4 lg:py-5 flex flex-col lg:flex-row gap-5 items-start">
 
     <!-- =========================================================================
-         左栏：模块化导航与系统控制坞 (固定高度，独立分类目录，系统控制沉底)
+         左栏：6 大功能模块空间 + 独立分类目录 + 系统控制坞
          ========================================================================= -->
-    <aside class="w-full lg:w-[276px] shrink-0 lg:sticky lg:top-5 flex flex-col gap-3.5 lg:h-[calc(100vh-2.5rem)]">
+    <aside class="w-full lg:w-[280px] shrink-0 lg:sticky lg:top-5 flex flex-col gap-3.5 lg:h-[calc(100vh-2.5rem)]">
       
-      <!-- 1. 顶部品牌 Header（自定义图标已缩小一半为 w-5 h-5 居中展示） -->
+      <!-- 1. 顶部品牌 Header（自定义图标 w-5 h-5 居中展示） -->
       <div class="specular-card rounded-2xl p-3.5 shrink-0">
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-3 cursor-pointer group" onclick="handleBrandLogoClick(event)">
@@ -234,32 +251,36 @@
               <p class="text-[11px] text-slate-400 dark:text-slate-500">Creator & Dev OS</p>
             </div>
           </div>
-          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60" title="将图标命名为 logo.png 放入根目录即可自动替换左上角图标">v6.2</span>
+          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60" title="将图标命名为 logo.png 放入根目录即可自动替换左上角图标">v7.0</span>
         </div>
       </div>
 
-      <!-- 2. 多功能模块矩阵 -->
+      <!-- 2. 科学重构的 6 大功能模块矩阵（紧密贴合你的 175+ 书签种类，方便一键快筛） -->
       <div class="specular-card rounded-2xl p-3 shrink-0">
         <div class="flex items-center justify-between px-1.5 pb-2">
           <span class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">功能模块空间</span>
-          <span class="text-[10px] font-mono theme-text">5 独立空间</span>
+          <span class="text-[10px] font-mono theme-text">6 大专属领域</span>
         </div>
-        <div class="grid grid-cols-5 lg:grid-cols-2 gap-1.5" id="moduleSwitcher">
-          <button type="button" onclick="switchAppModule('bookmarks', 'all')" data-mod="bookmarks" class="mod-btn col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all theme-grad-bg text-white shadow-sm">
-            <span class="flex items-center gap-2"><span>🧭</span><span>网址导航全集</span></span>
-            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/20" id="modBookmarkCount">178</span>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-1.5" id="moduleSwitcher">
+          <button type="button" onclick="switchAppModule('bookmarks', 'all')" data-mod="bookmarks" class="mod-btn col-span-2 sm:col-span-3 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all theme-grad-bg text-white shadow-sm">
+            <span class="flex items-center gap-2"><span>🧭</span><span>网址导航全集 (总览)</span></span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/20" id="modBookmarkCount">175</span>
           </button>
-          <button type="button" onclick="switchAppModule('Cinema', 'all')" data-mod="Cinema" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
-            <span>🎬</span><span class="truncate">影视专区</span>
+          <button type="button" onclick="switchAppModule('AIStudio', 'all')" data-mod="AIStudio" class="mod-btn flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🤖</span><span class="truncate">AI 创作台</span>
           </button>
-          <button type="button" onclick="switchAppModule('Music', 'all')" data-mod="Music" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
-            <span>🎵</span><span class="truncate">音乐电台</span>
+          <button type="button" onclick="switchAppModule('CGAssets', 'all')" data-mod="CGAssets" class="mod-btn flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🎮</span><span class="truncate">UE5/3D资产</span>
           </button>
-          <button type="button" onclick="switchAppModule('Toolbox', 'all')" data-mod="Toolbox" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
-            <span>🛠️</span><span class="truncate">工具箱</span>
+          <button type="button" onclick="switchAppModule('Media', 'all')" data-mod="Media" class="mod-btn flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🎬</span><span class="truncate">影视与音乐</span>
           </button>
-          <button type="button" onclick="switchAppModule('Software', 'all')" data-mod="Software" class="mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
-            <span>📦</span><span class="truncate">软件库</span>
+          <button type="button" onclick="switchAppModule('Toolbox', 'all')" data-mod="Toolbox" class="mod-btn flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span>🛠️</span><span class="truncate">图像工具箱</span>
+          </button>
+          <button type="button" onclick="switchAppModule('Software', 'all')" data-mod="Software" class="mod-btn col-span-2 sm:col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all">
+            <span class="flex items-center gap-2"><span>📦</span><span class="truncate">软件插件 & 建站运维</span></span>
+            <span class="text-[10px] font-mono text-slate-400">极客库</span>
           </button>
         </div>
       </div>
@@ -275,9 +296,7 @@
             <span>＋</span><span>添加分类</span>
           </button>
         </div>
-        <nav id="categoryNav" class="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-y-auto pb-1 lg:pb-0 mt-1.5 pr-0.5 flex-1">
-          <!-- 动态渲染当前模块专属分类 -->
-        </nav>
+        <nav id="categoryNav" class="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-y-auto pb-1 lg:pb-0 mt-1.5 pr-0.5 flex-1"></nav>
       </div>
 
       <!-- 4. 最底部（mt-auto 固定沉底）：系统控制与一键写入 index.html -->
@@ -287,7 +306,7 @@
             <span id="editStatusDot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
             <span>系统控制与管理</span>
           </span>
-          <span class="text-[10px] font-mono theme-text">GitHub Ready</span>
+          <span class="text-[10px] font-mono theme-text">Drag & Sync</span>
         </div>
         
         <div class="grid grid-cols-2 gap-2">
@@ -300,7 +319,7 @@
         </div>
 
         <!-- 一键直接保存替换 index.html 按钮 -->
-        <button type="button" onclick="saveDirectlyToIndexHtml()" title="直接将当前所有修改写入并替换硬盘上的 index.html 文件，无需手动改代码即可直接提交 GitHub" class="w-full mt-2 py-2 px-3 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
+        <button type="button" onclick="saveDirectlyToIndexHtml()" title="直接将当前所有修改（含拖拽排序结果）写入并替换硬盘上的 index.html 文件" class="w-full mt-2 py-2 px-3 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
           <span>💾</span> <span>一键写入更新 index.html</span>
         </button>
 
@@ -325,7 +344,7 @@
          ========================================================================= -->
     <div class="flex-1 min-w-0 w-full flex flex-col gap-5">
 
-      <!-- 1. 顶部全宽贯穿式搜索舱（右上角纯图标：🎨 主题颜色 > ☀️/🌙 深浅色 > 🕒 最近访问） -->
+      <!-- 1. 顶部全宽贯穿式搜索舱（集成淘宝、京东，右上角纯图标：🎨 主题颜色 > ☀️/🌙 深浅色 > 🕒 最近访问） -->
       <section class="specular-card rounded-3xl p-5 sm:px-7 sm:py-6 relative w-full z-30">
         <div class="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
           <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-[520px] h-32 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-500/20 blur-3xl"></div>
@@ -375,7 +394,7 @@
         </div>
 
         <div class="max-w-4xl mx-auto relative z-10">
-          <!-- 搜索引擎切换胶囊（顺序：站内书签 > Google > Bing > GitHub > B站） -->
+          <!-- 搜索引擎切换胶囊（顺序：站内书签 > Google > Bing > GitHub > B站 > 淘宝 > 京东） -->
           <div class="flex items-center justify-center gap-1.5 sm:gap-2 mb-3.5 text-xs sm:text-[13px] flex-wrap" id="searchEngineTabs">
             <button type="button" onclick="setSearchEngine('local')" data-engine="local" class="engine-tab px-3.5 py-1.5 rounded-full font-semibold theme-solid-bg text-white shadow-sm transition-all flex items-center gap-1.5">
               <span>🔍</span> <span>站内书签</span>
@@ -391,6 +410,12 @@
             </button>
             <button type="button" onclick="setSearchEngine('bilibili')" data-engine="bilibili" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
               <span>📺</span> <span>B站</span>
+            </button>
+            <button type="button" onclick="setSearchEngine('taobao')" data-engine="taobao" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
+              <span>🛍️</span> <span>淘宝</span>
+            </button>
+            <button type="button" onclick="setSearchEngine('jd')" data-engine="jd" class="engine-tab px-3.5 py-1.5 rounded-full font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-all flex items-center gap-1.5">
+              <span>🐶</span> <span>京东</span>
             </button>
           </div>
 
@@ -440,7 +465,7 @@
           <div id="editModeBanner" class="hidden mb-5 specular-card rounded-2xl p-3.5 border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/10 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
               <span class="text-base">⚙️</span>
-              <span>【管理模式已开启】：1. 卡片下方可编辑/删除书签；2. 点击左上角图标可上传更换自定义 Logo；3. 改完后点击左下角「💾 一键写入更新 index.html」可直接保存替换源码文件。</span>
+              <span>【管理模式已开启】：1. <b>按住任意书签卡片可直接拖拽调整顺序</b>；2. 卡片底部可编辑/删除；3. 点击左上角可换 Logo；4. 改完点「💾 直接保存至 index.html」即可固化。</span>
             </div>
             <div class="flex items-center gap-2">
               <button type="button" onclick="saveDirectlyToIndexHtml()" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shrink-0 transition">💾 直接保存至 index.html</button>
@@ -622,10 +647,11 @@
           <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">所属功能模块 *</label>
           <select id="bmModuleSelect" onchange="populateModalCategories(this.value)" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:border-indigo-500 transition">
             <option value="bookmarks">🧭 网址导航全集</option>
-            <option value="Cinema">🎬 影视专区</option>
-            <option value="Music">🎵 音乐电台</option>
-            <option value="Toolbox">🛠️ 工具箱</option>
-            <option value="Software">📦 软件库</option>
+            <option value="AIStudio">🤖 AI 创作工作台</option>
+            <option value="CGAssets">🎮 UE5 & 3D 资产库</option>
+            <option value="Media">🎬 影视后期 & 音乐</option>
+            <option value="Toolbox">🛠️ 图像设计 & 工具箱</option>
+            <option value="Software">📦 软件插件 & 建站运维</option>
           </select>
         </div>
         <div>
@@ -670,12 +696,11 @@
     </div>
   </div>
 
-  <!-- Toast 消息浮层 -->
+  <!-- Toast 消息浮层（始终保持初始为空，防止快照残留） -->
   <div id="toastContainer" class="fixed bottom-20 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- 预加载 js/bookmarks-data.js 原生离线 Base64 图标库 -->
   <script src="js/bookmarks-data.js" onerror="this.remove()"></script>
-  <script src="bookmarks-data.js" onerror="this.remove()"></script>
 
   <!-- ==================== 核心逻辑脚本 ==================== -->
   <script>
@@ -687,9 +712,9 @@
       { id: 'tool-time', title: '时间戳 & UE5 材质颜色转换', desc: 'Unix 时间戳互转、HEX 转 RGB 及 UE5 Material 线性浮点 (0.0~1.0) 颜色换算', icon: '⏱️', type: 'time' }
     ];
 
-    // 2. 官方原版矢量 SVG 图标字典（100% 官方品牌矢量路径，4K 屏下极致锐利）
+    // 2. 官方原版矢量 SVG 图标字典
     const OFFICIAL_BRAND_SVGS = {
-     'bilibili.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2300AEEC"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>`,
+      'bilibili.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2300AEEC"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>`,
       'youtube.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
       'github.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`,
       'pinterest.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23E60023"><path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z"/></svg>`,
@@ -702,13 +727,12 @@
       'artstation.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2313AFF0"><path d="M0 17.723l2.027 3.505h.001a2.424 2.424 0 0 0 2.164 1.333h13.457l-2.792-4.838H0zm24 .025c0-.484-.143-.935-.388-1.314L15.728 2.728a2.424 2.424 0 0 0-2.142-1.289H9.419L21.598 22.54l1.92-3.325c.378-.637.482-.919.482-1.467zm-11.129-3.462L7.428 4.858l-5.444 9.428h10.887z"/></svg>`
     };
 
-    // 3. 源码级持久化数据区（当点击「💾 一键写入更新 index.html」时，程序会自动更新此区块）
+    // 3. 源码级持久化数据区（点击「💾 一键写入更新 index.html」时，自动更新此区块）
     /*__SYNC_DATA_START__*/
-    const DATA_VERSION = 1776000002;
+    const DATA_VERSION = 1792820000000;
     const INITIAL_CUSTOM_LOGO = "";
-    const INITIAL_CUSTOM_CATS = { "bookmarks": [], "Cinema": [], "Music": [], "Toolbox": [], "Software": [] };
+    const INITIAL_CUSTOM_CATS = {"bookmarks":[],"AIStudio":[],"CGAssets":[],"Media":[],"Toolbox":[],"Software":[]};
     const INITIAL_BOOKMARKS = [
-      // ==================== 🔥 高频工作台 & 社区 ====================
       { "id": "b1", "category": "🔥 高频工作台 & 社区", "title": "哔哩哔哩 Bilibili", "url": "https://www.bilibili.com/", "desc": "国内核心弹幕视频与 CG / AI / UE5 教程学习社区" },
       { "id": "b2", "category": "🔥 高频工作台 & 社区", "title": "YouTube", "url": "https://youtube.com/", "desc": "全球最大的视频与海外官方 CG、虚幻引擎教程平台" },
       { "id": "b3", "category": "🔥 高频工作台 & 社区", "title": "Pinterest 视觉灵感库", "url": "https://www.pinterest.com/", "desc": "全球设计师必备的视觉灵感、原画设定与美术参考瀑布流" },
@@ -720,9 +744,6 @@
       { "id": "b9", "category": "🔥 高频工作台 & 社区", "title": "DeepL 神经网络精准翻译", "url": "https://www.deepl.com/zh/translator", "desc": "高准确度多语言在线文献、技术文档与提示词互译工具" },
       { "id": "b10", "category": "🔥 高频工作台 & 社区", "title": "新片场 - LiangLiang 作品集", "url": "https://www.xinpianchang.com/u14004225", "desc": "LiangLiang 个人影视后期与 CG 视觉视频作品集展示主页" },
       { "id": "b11", "category": "🔥 高频工作台 & 社区", "title": "我的任务 - ftrack 制片管线", "url": "https://f.hzpipeline.com/#itemId=home", "desc": "团队内部 CG 制片管理、镜头审核与个人任务进度追踪平台" },
-      { "id": "b12", "category": "🔥 高频工作台 & 社区", "title": "HORIZON WIKI 团队知识库", "url": "http://wiki.hzpipeline.com/zh/home", "desc": "团队内部入职引导、制作规范与技术流程 Wiki 文档中心" },
-
-      // ==================== 🤖 AI 对话 & 深度搜索 ====================
       { "id": "a1", "category": "🤖 AI 对话 & 深度搜索", "title": "ChatGPT (OpenAI)", "url": "https://chatgpt.com/", "desc": "OpenAI 旗舰级对话大模型，支持代码编写、逻辑推理与多模态分析" },
       { "id": "a2", "category": "🤖 AI 对话 & 深度搜索", "title": "Google Gemini", "url": "https://gemini.google.com/app", "desc": "Google 原生超长上下文多模态 AI 助手，擅长复杂项目分析与创作" },
       { "id": "a3", "category": "🤖 AI 对话 & 深度搜索", "title": "Kimi 智能助手", "url": "https://www.kimi.com/", "desc": "月之暗面出品，擅长超长文档解析、联网搜索与深度思考的 AI 助手" },
@@ -732,8 +753,6 @@
       { "id": "a7", "category": "🤖 AI 对话 & 深度搜索", "title": "Merlin AI 多模型聚合助手", "url": "https://www.getmerlin.in/chat", "desc": "集成多款主流大模型的在线 AI 聊天、网页摘要与写作助手" },
       { "id": "a8", "category": "🤖 AI 对话 & 深度搜索", "title": "AI 工具集导航大全", "url": "https://ai-bot.cn/", "desc": "收录国内外 500+ 款写作、绘画、视频、编程与办公 AI 工具的权威分类导航" },
       { "id": "a9", "category": "🤖 AI 对话 & 深度搜索", "title": "超级助手 AI 知识社区", "url": "https://www.wolai.com/vNksqn7wRKcAJqW4Qopcjh", "desc": "基于 Wolai 维护的 AI 绘画、大模型提示词工程与前沿实操教程知识库" },
-
-      // ==================== 🎨 AI 绘画 & ComfyUI 生态 ====================
       { "id": "p1", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "Civitai (C站全球模型库)", "url": "https://civitai.com/", "desc": "全球最大的 Stable Diffusion & FLUX Checkpoint、LoRA 模型与返图社区" },
       { "id": "p2", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "LiblibAI 哩布哩布 AI", "url": "https://www.liblib.art/", "desc": "国内领先的 AI 绘画模型下载、在线 ComfyUI 工作流与生图平台" },
       { "id": "p3", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "FLUX 模型合集 (Replicate)", "url": "https://replicate.com/collections/flux", "desc": "Black Forest Labs 出品的 FLUX 系列图像生成模型云端在线运行库" },
@@ -756,8 +775,6 @@
       { "id": "p20", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "ImgUpscaler AI 图像无损放大", "url": "https://imgupscaler.com/zh-tw", "desc": "支持批量免费将数码照片、CG 渲染图与动漫插画放大至 4K 高清分辨率" },
       { "id": "p21", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "iFoto AI 电商摄影工作室", "url": "https://www.ifoto.ai/dashboard", "desc": "专为电商视觉打造的 AI 模特换装、商品背景生成与光影融合工作台" },
       { "id": "p22", "category": "🎨 AI 绘画 & ComfyUI 生态", "title": "PicMa 一站式 AI 影像增强", "url": "https://picma.magictiger.ai/zh", "desc": "集成老照片修复、上色、去划痕与 AI 视频画质增强的在线工具箱" },
-
-      // ==================== 🎬 AI 视频 & 音频生成 ====================
       { "id": "v1", "category": "🎬 AI 视频 & 音频生成", "title": "PixVerse AI 视频创作", "url": "https://pixverse.ai/", "desc": "支持文生视频、图生视频与角色一致性动画的高清 AI 视频生成平台" },
       { "id": "v2", "category": "🎬 AI 视频 & 音频生成", "title": "DomoAI 视频转绘与风格化", "url": "https://www.domoai.app/en/create/video?utm_source=youtube", "desc": "将实拍视频一键转换为日漫、3D 卡通、像素或写实 CG 风格的 AI 视频工具" },
       { "id": "v3", "category": "🎬 AI 视频 & 音频生成", "title": "HeyGen AI 数字人视频", "url": "https://app.heygen.com/home", "desc": "专业级 AI 口播数字人视频生成、多语种嘴型同步与视频翻译工作台" },
@@ -768,8 +785,6 @@
       { "id": "v8", "category": "🎬 AI 视频 & 音频生成", "title": "Fish Audio 声音克隆与 TTS", "url": "https://fish.audio/zh-CN/", "desc": "高自然度 AI 语音合成、多角色情感配音与几秒样本极速声音克隆平台" },
       { "id": "v9", "category": "🎬 AI 视频 & 音频生成", "title": "Adobe Podcast 录音智能降噪", "url": "https://podcast.adobe.com/", "desc": "Adobe 出品 AI 人声增强工具，一键消除环境噪音并将普通录音提升至录音棚音质" },
       { "id": "v10", "category": "🎬 AI 视频 & 音频生成", "title": "MaskGCT 国产开源语音大模型", "url": "https://www.jiqizhixin.com/articles/2024-10-30-3", "desc": "机器之心深度报道：媲美真人语调的国产开源语音生成大模型技术解析" },
-
-      // ==================== 🎮 UE5 虚幻引擎 & 游戏特效 ====================
       { "id": "u1", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Epic 虚幻引擎官方开发者社区", "url": "https://dev.epicgames.com/community/unreal-engine/getting-started/games", "desc": "Unreal Engine 5 官方入门路径、技术文档、Lumen/Nanite 教程与技术论坛" },
       { "id": "u2", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Fab (Epic 虚幻引擎官方新商城)", "url": "https://www.fab.com/", "desc": "原 Unreal Engine Marketplace 升级版，汇聚商业级 UE5 场景、Niagara 特效与 Megascans 资产" },
       { "id": "u3", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "Real Time VFX 实时特效论坛", "url": "https://realtimevfx.com/c/general/9", "desc": "全球最权威的游戏实时特效（UE5/Unity）制作思路、Shader 拆解与赛事社区" },
@@ -792,8 +807,6 @@
       { "id": "u20", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "GameAssetsFree 免费虚幻引擎资产", "url": "https://gameassetsfree.com/assets-ue/", "desc": "免费分享 Unreal Engine 商城环境建筑、武器道具、材质包与游戏特效资产" },
       { "id": "u21", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "World Creator 地形生成器官网与教程", "url": "https://www.world-creator.com/index.html", "desc": "实时 GPU 加速的专业级三维程序化地形、山脉侵蚀与地貌景观生成软件官网" },
       { "id": "u22", "category": "🎮 UE5 虚幻引擎 & 游戏特效", "title": "UE4/UE5 第三人称动作游戏实战演示", "url": "https://www.youtube.com/watch?v=ipqaJX7mdko", "desc": "YouTube 虚幻引擎第三人称战斗系统、状态机与打击特效合成完整演示视频" },
-
-      // ==================== 🧊 3D 模型 & 次世代 CG 资产 ====================
       { "id": "m1", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "CGTrader 全球 3D 模型交易平台", "url": "https://www.cgtrader.com/", "desc": "超百万级专业 PBR 游戏模型、概念载具、建筑组件与 3D 打印资产下载市场" },
       { "id": "m2", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "Sketchfab Store 在线 3D 资产商店", "url": "https://sketchfab.com/store", "desc": "支持在浏览器内直接 360° 实时查看拓扑、骨骼动画与 PBR 贴图通道的 3D 模型库" },
       { "id": "m3", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "KitBash3D 殿堂级电影/游戏场景资产包", "url": "https://kitbash3d.com/", "desc": "好莱坞与 3A 游戏工作室御用的赛博朋克、废土、科幻与奇幻世界大型 3D 建筑资产" },
@@ -828,8 +841,6 @@
       { "id": "m32", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D溜溜网 - 现代非机动车电动自行车模型", "url": "https://3d.3d66.com/reshtmla/model/items/2R/2RxE446FyVbo00UNl0LJ.html", "desc": "城市街景道具：高精度现代电动自行车/电瓶车 3D 模型 (VR渲染器 / 37.89MB)" },
       { "id": "m33", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D溜溜网 - 现代十字路口交通信号灯模型", "url": "https://3d.3d66.com/reshtmla/model/items/2M/2MAnJl3t5lyV5xSYBgGZ.html", "desc": "城市道路交通基础设施：现代红绿灯交通信号灯 3D 模型 (VR渲染器 / 74.84MB)" },
       { "id": "m34", "category": "🧊 3D 模型 & 次世代 CG 资产", "title": "3D溜溜网 - 现代马路栅栏路障围挡模型", "url": "https://3d.3d66.com/reshtmla/model/items/z7/z7xWm3xh4g5JM3H43Z0r.html", "desc": "城市市政施工道具：现代马路护栏栅栏与路障围挡 3D 模型 (CR渲染器 / 7.31MB)" },
-
-      // ==================== 🌍 PBR 材质贴图 & 全景 HDRI ====================
       { "id": "t1", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Poly Haven (CC0 免费 16K HDRI 与材质)", "url": "https://polyhaven.com/hdris", "desc": "100% 免费无版权 CC0 协议的 8K/16K 户外室内 HDRI 环境光、PBR 材质与扫描模型库" },
       { "id": "t2", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "ambientCG 免费 CC0 PBR 无缝材质库", "url": "https://ambientcg.com/list?sort=popular", "desc": "收录数千套免费商用 4K/8K PBR 材质球（含法线、粗糙度、置换贴图）的权威资源网" },
       { "id": "t3", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Texturing.XYZ 影视级人物皮肤微观纹理", "url": "https://texturing.xyz/", "desc": "全球角色艺术家必备的多通道超高清人类面部毛孔、皱纹置换贴图与虹膜扫描库" },
@@ -840,8 +851,6 @@
       { "id": "t8", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "2G Academy 高精度次世代植物资产", "url": "https://www.2gacademy.net/product-page/lagerstroemia-indica", "desc": "专业级紫薇树（Lagerstroemia Indica）等写实建筑景观植物模型与叶片材质包" },
       { "id": "t9", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Pexels 免费高清无版权摄影图与视频", "url": "https://www.pexels.com/zh-cn/", "desc": "免费可商用的高分辨率实拍风景、建筑、人物摄影参考图与 4K 空镜视频素材库" },
       { "id": "t10", "category": "🌍 PBR 材质贴图 & 全景 HDRI", "title": "Storyblocks 免版税视听素材全集", "url": "https://www.storyblocks.com/", "desc": "提供海量免版税 4K 实拍视频、绿幕抠像素材、背景音乐与音效的创作者素材库" },
-
-      // ==================== ✂️ 图像工具 & 后期软件运维 ====================
       { "id": "i1", "category": "✂️ 图像工具 & 后期软件运维", "title": "Remove.bg 全自动 AI 抠图去背景", "url": "https://www.remove.bg/zh", "desc": "5 秒内全自动识别人物、商品与动物边缘并生成干净透明底 PNG 的标杆抠图工具" },
       { "id": "i2", "category": "✂️ 图像工具 & 后期软件运维", "title": "Erase.bg 免费高清原图去背景工具", "url": "https://www.erase.bg/zh", "desc": "支持高达 5000×5000px 分辨率原图免费 AI 抠图并保留完整边缘细节的在线神器" },
       { "id": "i3", "category": "✂️ 图像工具 & 后期软件运维", "title": "Squoosh (Google 纯本地无损图片压缩)", "url": "https://squoosh.app/", "desc": "Google Chrome 团队出品，纯浏览器本地实时对比画质并转换 WebP/AVIF/PNG 的压缩工具" },
@@ -876,7 +885,6 @@
       { "id": "s6", "category": "✂️ 图像工具 & 后期软件运维", "title": "果核剥壳 精品绿色便携软件分享", "url": "https://www.ghxi.com/", "desc": "国内极具口碑的绿色软件站，专注分享免安装便携版、去广告纯净版 Windows/安卓工具" },
       { "id": "s7", "category": "✂️ 图像工具 & 后期软件运维", "title": "LRepacks 俄罗斯大神直装便携版软件库", "url": "https://lrepacks.net/", "desc": "全球知名的俄罗斯 Repack 站点，提供海量免激活一键直装的专业设计、音视频与系统软件" },
       { "id": "s8", "category": "✂️ 图像工具 & 后期软件运维", "title": "ZAPRO · 杂铺 精选生产力软件库", "url": "https://tmioe.com/", "desc": "高颜值纯净软件博客，精选 Windows 与 macOS 平台设计、剪辑、办公及效率破解软件" },
-      { "id": "s9", "category": "✂️ 图像工具 & 后期软件运维", "title": "无痕哥 Blog 实用软件资源站", "url": "https://www.wuhenge.com/", "desc": "持续更新专业图形图像软件、电脑提效工具与实用技术教程的个人资源博客" },
       { "id": "s10", "category": "✂️ 图像工具 & 后期软件运维", "title": "APP喵 (阿喵软件与互联网黑科技分享)", "url": "https://www.appmiu.com/", "desc": "每日挖掘全网有趣好用的开源小工具、独立开发 App、网站资源与电脑软件" },
       { "id": "s11", "category": "✂️ 图像工具 & 后期软件运维", "title": "油小猴 实用油猴脚本与黑科技工具箱", "url": "https://www.youxiaohou.com/", "desc": "聚合网盘满速直链解析、浏览器扩展插件、Tampermonkey 脚本与宝藏小网站合集" },
       { "id": "s12", "category": "✂️ 图像工具 & 后期软件运维", "title": "刘明野的工具箱 (开发者与日常在线工具)", "url": "https://tools.liumingye.cn/", "desc": "极简无广告的在线工具集合，涵盖无损音乐、二维码生成、编解码与图片处理" },
@@ -903,10 +911,10 @@
     ];
     /*__SYNC_DATA_END__*/
 
-    // ==================== 4. 全局存储 Key 与搜索引擎定义 ====================
-    const STORAGE_KEY       = 'pro_cockpit_bookmarks_v6';
-    const DATA_VER_KEY      = 'pro_cockpit_data_version_v6';
-    const CUSTOM_CATS_KEY   = 'pro_cockpit_custom_cats_v6';
+    // ==================== 4. 全局存储 Key 与搜索引擎定义（新增淘宝与京东） ====================
+    const STORAGE_KEY       = 'pro_cockpit_bookmarks_v7';
+    const DATA_VER_KEY      = 'pro_cockpit_data_version_v7';
+    const CUSTOM_CATS_KEY   = 'pro_cockpit_custom_cats_v7';
     const CUSTOM_LOGO_KEY   = 'pro_cockpit_custom_logo_v6';
     const RECENT_VISITS_KEY = 'pro_cockpit_recent_visits_v4';
     const MEMO_STORAGE_KEY  = 'pro_cockpit_quick_memo_v4';
@@ -918,7 +926,9 @@
       google:   { name: 'Google',   btnText: 'Google 搜索', placeholder: '在 Google 中搜索全球技术文档、UE5 资料与 CG 教程，按回车直达...', url: 'https://www.google.com/search?q=' },
       bing:     { name: 'Bing',     btnText: '必应搜索', placeholder: '在微软 Bing 中搜索全球网页与技术资料，按回车直达...', url: 'https://cn.bing.com/search?q=' },
       github:   { name: 'GitHub',   btnText: '搜开源项目', placeholder: '在 GitHub 检索开源项目、ComfyUI 自定义节点与实用脚本...', url: 'https://github.com/search?q=' },
-      bilibili: { name: 'B站',      btnText: '搜 B站视频', placeholder: '在 Bilibili 搜索 UE5 / ComfyUI / Houdini 视频教程与 UP 主...', url: 'https://search.bilibili.com/all?keyword=' }
+      bilibili: { name: 'B站',      btnText: '搜 B站视频', placeholder: '在 Bilibili 搜索 UE5 / ComfyUI / Houdini 视频教程与 UP 主...', url: 'https://search.bilibili.com/all?keyword=' },
+      taobao:   { name: '淘宝',     btnText: '搜淘宝', placeholder: '在淘宝网搜索数码硬件、外设装备与设计素材商品，按回车直达...', url: 'https://s.taobao.com/search?q=' },
+      jd:       { name: '京东',     btnText: '搜京东', placeholder: '在京东商城搜索显卡硬件、显示器、数码自营商品，按回车直达...', url: 'https://search.jd.com/Search?keyword=' }
     };
 
     const CATEGORY_META = {
@@ -932,80 +942,100 @@
       '✂️ 图像工具 & 后期软件运维':   { icon: '✂️', grad: 'from-amber-500 to-orange-600' }
     };
 
-    // 5 大功能模块各自独立的分类树规则与默认结构
+    // 科学规划的 6 大功能模块各自独立的分类树规则与默认结构
     const MODULE_CONFIG = {
       bookmarks: {
         name: '网址导航全集',
-        headerTitle: '导航分类目录',
+        headerTitle: '全集分类目录',
         defaultCategories: Object.keys(CATEGORY_META)
       },
-      Cinema: {
-        name: '影视与视频创作专区',
-        headerTitle: '影视独立分类',
+      AIStudio: {
+        name: 'AI 创作工作台',
+        headerTitle: 'AI 创作独立分类',
         defaultCategories: [
-          '📺 视频流媒体与作品社区',
-          '🎬 AI 视频生成与数字人',
-          '🎞️ 影视后期模板与 VFX 素材',
-          '🧰 视频提取与硬字幕擦除'
+          '🧠 对话大模型 & 深度搜索',
+          '🎨 AI 绘画模型 & 在线生图',
+          '⚡ ComfyUI 工作流 & 进阶教程',
+          '🎬 AI 视频 / 3D / 语音生成'
         ],
         autoAssignCategory: (bm) => {
-          if (bm.module === 'Cinema' && bm.modCategory) return bm.modCategory;
-          if (['b1', 'b2', 'b10'].includes(bm.id)) return '📺 视频流媒体与作品社区';
-          if (['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7'].includes(bm.id)) return '🎬 AI 视频生成与数字人';
-          if (['u15', 'u16', 's1', 's2', 's3', 't10'].includes(bm.id)) return '🎞️ 影视后期模板与 VFX 素材';
-          if (['s4', 'i19', 'n6'].includes(bm.id)) return '🧰 视频提取与硬字幕擦除';
+          if (bm.module === 'AIStudio' && bm.modCategory) return bm.modCategory;
+          if (bm.category === '🤖 AI 对话 & 深度搜索') return '🧠 对话大模型 & 深度搜索';
+          if (['p1', 'p2', 'p3', 'p4', 'p12', 'p13', 'p14', 'p15', 'p16', 'p17'].includes(bm.id)) return '🎨 AI 绘画模型 & 在线生图';
+          if (['p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11'].includes(bm.id)) return '⚡ ComfyUI 工作流 & 进阶教程';
+          if (bm.category === '🎬 AI 视频 & 音频生成' || ['m7', 'm8', 't7'].includes(bm.id)) return '🎬 AI 视频 / 3D / 语音生成';
           return null;
         }
       },
-      Music: {
-        name: '音乐电台 & AI 音频专区',
-        headerTitle: '音乐独立分类',
+      CGAssets: {
+        name: 'UE5 & 3D 资产库',
+        headerTitle: 'CG 资产独立分类',
         defaultCategories: [
-          '🎧 无损音乐与在线电台',
-          '🎙️ AI 声音克隆与语音合成',
-          '🎚️ 录音智能降噪与配乐库'
+          '🎮 UE5 虚幻引擎 & 实时特效',
+          '🧊 3D 模型商城 & 扫描资产',
+          '🏴‍☠️ 海外 CG 资源 & 教程宝库',
+          '🌍 PBR 材质贴图 & 全景 HDRI'
         ],
         autoAssignCategory: (bm) => {
-          if (bm.module === 'Music' && bm.modCategory) return bm.modCategory;
-          if (['s16', 's17'].includes(bm.id)) return '🎧 无损音乐与在线电台';
-          if (['v8', 'v10'].includes(bm.id)) return '🎙️ AI 声音克隆与语音合成';
-          if (['v9', 't10'].includes(bm.id)) return '🎚️ 录音智能降噪与配乐库';
+          if (bm.module === 'CGAssets' && bm.modCategory) return bm.modCategory;
+          if (bm.category === '🎮 UE5 虚幻引擎 & 游戏特效') return '🎮 UE5 虚幻引擎 & 实时特效';
+          if (['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm18', 'm29', 'm32', 'm33', 'm34'].includes(bm.id)) return '🧊 3D 模型商城 & 扫描资产';
+          if (['m9', 'm10', 'm11', 'm12', 'm13', 'm14', 'm15', 'm16', 'm17', 'm19', 'm20', 'm21', 'm22', 'm23', 'm24', 'm25', 'm26', 'm27', 'm28', 'm30', 'm31'].includes(bm.id)) return '🏴‍☠️ 海外 CG 资源 & 教程宝库';
+          if (bm.category === '🌍 PBR 材质贴图 & 全景 HDRI') return '🌍 PBR 材质贴图 & 全景 HDRI';
+          return null;
+        }
+      },
+      Media: {
+        name: '影视后期 & 音乐',
+        headerTitle: '视听创作独立分类',
+        defaultCategories: [
+          '🎨 视觉灵感 & 视频社区',
+          '🎞️ 影视后期模板 & VFX 素材',
+          '🎧 无损音乐 & AI 配音降噪',
+          '🧰 视频提取 & 硬字幕擦除'
+        ],
+        autoAssignCategory: (bm) => {
+          if (bm.module === 'Media' && bm.modCategory) return bm.modCategory;
+          if (['b1', 'b2', 'b3', 'b4', 'b10', 't9'].includes(bm.id)) return '🎨 视觉灵感 & 视频社区';
+          if (['u15', 'u16', 's1', 's2', 's3', 't10'].includes(bm.id)) return '🎞️ 影视后期模板 & VFX 素材';
+          if (['s16', 's17', 'v8', 'v9', 'v10'].includes(bm.id)) return '🎧 无损音乐 & AI 配音降噪';
+          if (['s4', 'i19', 'n6'].includes(bm.id)) return '🧰 视频提取 & 硬字幕擦除';
           return null;
         }
       },
       Toolbox: {
-        name: '效率工具箱专区',
+        name: '图像设计 & 工具箱',
         headerTitle: '工具箱独立分类',
         defaultCategories: [
           '✂️ AI 智能抠图与画质修复',
           '🖼️ 图片压缩与圆角尺寸处理',
           '📄 PDF 转换与多语言翻译',
-          '🎨 字体图标与渐变背景生成'
+          '🎨 字体图标与视觉生成'
         ],
         autoAssignCategory: (bm) => {
           if (bm.module === 'Toolbox' && bm.modCategory) return bm.modCategory;
           if (['i1', 'i2', 'p18', 'p19', 'p20', 'p21', 'p22'].includes(bm.id)) return '✂️ AI 智能抠图与画质修复';
           if (['i3', 'i5', 'i6', 'i7', 'i13', 'i14', 'i15', 'i16'].includes(bm.id)) return '🖼️ 图片压缩与圆角尺寸处理';
-          if (['i17', 'i18', 'b9', 's12'].includes(bm.id)) return '📄 PDF 转换与多语言翻译';
-          if (['i4', 'i8', 'i9', 'i10', 'i11', 'i12', 'i20', 'i21', 'i22', 'i23', 'i24', 'i25', 'p12'].includes(bm.id)) return '🎨 字体图标与渐变背景生成';
+          if (['i17', 'i18', 'b9', 's12', 'n10'].includes(bm.id)) return '📄 PDF 转换与多语言翻译';
+          if (['b5', 'i4', 'i8', 'i9', 'i10', 'i11', 'i12', 'i20', 'i21', 'i22', 'i23', 'i24', 'i25', 'i26', 'p12', 'n11'].includes(bm.id)) return '🎨 字体图标与视觉生成';
           return null;
         }
       },
       Software: {
-        name: '软件库 & 插件资源专区',
-        headerTitle: '软件库独立分类',
+        name: '软件插件 & 建站运维',
+        headerTitle: '软件与运维分类',
         defaultCategories: [
           '💻 绿色便携与直装破解软件',
-          '🎮 三维引擎插件与渲染工具',
+          '🔌 三维引擎插件与云渲染',
           '🚀 极客脚本与跨平台快传',
           '🌐 建站部署与云存储图床'
         ],
         autoAssignCategory: (bm) => {
           if (bm.module === 'Software' && bm.modCategory) return bm.modCategory;
-          if (['s5', 's6', 's7', 's8', 's9', 's10'].includes(bm.id)) return '💻 绿色便携与直装破解软件';
-          if (['u9', 'u12', 'u16', 'u18', 'u21', 'm9', 'm10', 'm22', 'm30', 'm31'].includes(bm.id)) return '🎮 三维引擎插件与渲染工具';
-          if (['b7', 's11', 's13', 's15'].includes(bm.id)) return '🚀 极客脚本与跨平台快传';
-          if (['n1', 'n2', 'n3', 'n4', 'n5', 'n7', 'n8', 'n9', 'n12', 'n13'].includes(bm.id)) return '🌐 建站部署与云存储图床';
+          if (['s5', 's6', 's7', 's8', 's10'].includes(bm.id)) return '💻 绿色便携与直装破解软件';
+          if (['u9', 'u12', 'u16', 'u18', 'u21', 'm9', 'm10', 'm22', 'm30', 'm31'].includes(bm.id)) return '🔌 三维引擎插件与云渲染';
+          if (['b7', 's11', 's13', 's15', 'n16', 'n17'].includes(bm.id)) return '🚀 极客脚本与跨平台快传';
+          if (['n1', 'n2', 'n3', 'n4', 'n5', 'n7', 'n8', 'n9', 'n12', 'n13', 'n15'].includes(bm.id)) return '🌐 建站部署与云存储图床';
           return null;
         }
       }
@@ -1015,16 +1045,21 @@
     let offlineIconMapByUrl = new Map();
     let offlineIconMapByHost = new Map();
     let hdUpgradedCache = new Map();
-    let customCategories = { bookmarks: [], Cinema: [], Music: [], Toolbox: [], Software: [] };
+    let customCategories = { bookmarks: [], AIStudio: [], CGAssets: [], Media: [], Toolbox: [], Software: [] };
     let recentVisits = [];
     let currentModule = 'bookmarks';
     let currentCategory = 'all';
     let currentEngine = 'local';
     let searchQuery = '';
     let isEditMode = false;
+    let draggedBookmarkId = null;
 
     // ==================== 5. 初始化生命周期 ====================
     function initApp() {
+      // 强制清空任何可能因快照残留的 Toast 节点，彻底解决提示不消失问题
+      const toastEl = document.getElementById('toastContainer');
+      if (toastEl) toastEl.innerHTML = '';
+
       initThemeAndAccent();
       initBrandCustomLogo();
       buildOfflineIconMaps();
@@ -1032,14 +1067,12 @@
       hydrateOfflineBase64Icons();
       loadRecentVisits();
       initQuickMemo();
-      renderCategories();
-      renderMainContent();
+      switchAppModule('bookmarks', 'all');
       initClockAndCNY();
       initWeather();
       initGlobalShortcutsAndScroll();
     }
 
-    // 左上角品牌自定义 Logo 初始化与上传切换（尺寸已缩小一半为 w-5 h-5）
     const LOGO_CANDIDATES = ['logo.png', 'logo.svg', 'logo.webp', 'logo.jpg', 'img/logo.png'];
     let logoCandidateIdx = 0;
 
@@ -1148,7 +1181,7 @@
       if (notify) showToast(`🎨 主题强调色已切换为：${names[colorName] || colorName}`);
     }
 
-    // ==================== 7. 双层渐进式超清图标引擎（离线秒开保底 + 后台无感升级 128px 超清源） ====================
+    // ==================== 7. 双层渐进式超清图标引擎 ====================
     const BROKEN_BASE64_HOSTS = new Set(['photomosh.com', 'www.world-creator.com', 'www.pbrmax.cn']);
 
     function buildOfflineIconMaps() {
@@ -1207,7 +1240,6 @@
       );
     }
 
-    // 获取图标配置：1.用户自定义 -> 2.官方原版矢量SVG -> 3.已升级缓存的超清源 -> 4.离线Base64保底秒开（同时附带超清升级候选源）
     function getHighDefIconInfo(bm) {
       const host = extractDomain(bm.url).toLowerCase();
       const cleanHost = host.replace(/^www\./, '');
@@ -1216,27 +1248,23 @@
         return { primarySrc: bm.customIcon, hd1: '', hd2: '', fb1: '' };
       }
 
-      // 官方原版矢量 SVG（无限分辨率，最清晰）
       for (const [domainKey, svgDataUri] of Object.entries(OFFICIAL_BRAND_SVGS)) {
         if (cleanHost === domainKey || cleanHost.endsWith('.' + domainKey)) {
           return { primarySrc: svgDataUri, hd1: '', hd2: '', fb1: '' };
         }
       }
 
-      // 高清在线源队列（64px~128px）
       const isPrivateHost = !host || host.includes('hzpipeline.com') || host.includes('192.168.');
       const favImHd = !isPrivateHost ? `https://favicon.im/${host}?larger=true` : '';
       const googleHd = !isPrivateHost ? `https://www.google.com/s2/favicons?domain=${host}&sz=128` : '';
       const iowenHd = !isPrivateHost ? `https://api.iowen.cn/favicon/${host}.png` : '';
 
-      // 若本次会话已成功探测到该域名的高清图标，直接使用高清源
       if (hdUpgradedCache.has(host)) {
         return { primarySrc: hdUpgradedCache.get(host), hd1: '', hd2: '', fb1: findOfflineBase64(bm.url) };
       }
 
       const offlineBase64 = (bm.icon && bm.icon.startsWith('data:image')) ? bm.icon : findOfflineBase64(bm.url);
 
-      // 若有离线 Base64，先 0ms 秒开显示离线图标（保证 100% 加载出来），同时将高清源挂载到 data-hd1 / data-hd2 供后台无感升级
       if (offlineBase64) {
         return {
           primarySrc: offlineBase64,
@@ -1256,14 +1284,12 @@
       };
     }
 
-    // 当图标加载完成时：若发现当前是 16x16 的低清 Base64 图标，在后台静默加载 128px 高清图标并无感替换
     window.handleIconLoad = function(imgEl) {
       if (imgEl.naturalWidth > 0 && imgEl.naturalWidth <= 1 && imgEl.naturalHeight <= 1) {
         window.handleIconError(imgEl);
         return;
       }
 
-      // 若当前显示的图标分辨率较低（< 48px，例如 Chrome 导出的 16x16 Base64），启动后台超清升级
       if (imgEl.getAttribute('data-hd-upgraded') !== '1' && imgEl.naturalWidth > 0 && imgEl.naturalWidth < 48) {
         const hd1 = imgEl.getAttribute('data-hd1');
         const hd2 = imgEl.getAttribute('data-hd2');
@@ -1275,7 +1301,6 @@
           if (!srcUrl) return;
           const probe = new Image();
           probe.onload = () => {
-            // 仅当新图标真实宽度 >= 32 且比原图更清晰时才无感替换，绝不替换成空白占位图
             if (probe.naturalWidth >= 32 && probe.naturalWidth > imgEl.naturalWidth) {
               imgEl.src = srcUrl;
               if (host) hdUpgradedCache.set(host, srcUrl);
@@ -1321,12 +1346,12 @@
 
       if (!isNewerFile) {
         try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          const rawCats = localStorage.getItem(CUSTOM_CATS_KEY);
+          const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('pro_cockpit_bookmarks_v6');
+          const rawCats = localStorage.getItem(CUSTOM_CATS_KEY) || localStorage.getItem('pro_cockpit_custom_cats_v6');
           if (rawCats) {
             const parsedCats = JSON.parse(rawCats);
             if (parsedCats && typeof parsedCats === 'object') {
-              customCategories = { bookmarks: [], Cinema: [], Music: [], Toolbox: [], Software: [], ...parsedCats };
+              customCategories = { bookmarks: [], AIStudio: [], CGAssets: [], Media: [], Toolbox: [], Software: [], ...parsedCats };
             }
           }
           if (raw) {
@@ -1342,7 +1367,7 @@
       }
 
       bookmarks = JSON.parse(JSON.stringify(INITIAL_BOOKMARKS));
-      customCategories = JSON.parse(JSON.stringify(INITIAL_CUSTOM_CATS));
+      customCategories = { bookmarks: [], AIStudio: [], CGAssets: [], Media: [], Toolbox: [], Software: [], ...INITIAL_CUSTOM_CATS };
       localStorage.setItem(DATA_VER_KEY, String(DATA_VERSION));
       saveBookmarksToStorage();
       saveCustomCategories();
@@ -1360,7 +1385,7 @@
       localStorage.setItem(CUSTOM_CATS_KEY, JSON.stringify(customCategories));
     }
 
-    // ==================== 9. 一键直接写入并替换硬盘上的 index.html 文件 ====================
+    // ==================== 9. 纯净源码生成与一键直接替换 index.html ====================
     let cachedIndexFileHandle = null;
 
     async function saveDirectlyToIndexHtml() {
@@ -1368,9 +1393,26 @@
         let htmlText = '';
         try {
           const res = await fetch(window.location.href, { cache: 'no-store' });
-          htmlText = await res.text();
+          if (res.ok) htmlText = await res.text();
         } catch {
-          htmlText = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+          htmlText = '';
+        }
+
+        // 若在本地 file:// 协议下通过 DOM 获取源码，先克隆并清理所有动态运行时节点（彻底防止 Toast 或多余样式被写死到源码中）
+        if (!htmlText) {
+          const cloneDoc = document.documentElement.cloneNode(true);
+          // 1) 移除 Tailwind CDN 在浏览器运行时动态生成的庞大 style 标签，只保留 #coreCustomStyles
+          cloneDoc.querySelectorAll('head style:not(#coreCustomStyles)').forEach(s => s.remove());
+          // 2) 清空动态容器内容，防止把正在显示的 Toast 提示或展开的菜单写死进源码文件
+          ['#toastContainer', '#mainContent', '#categoryNav', '#recentVisitsList'].forEach(sel => {
+            const el = cloneDoc.querySelector(sel);
+            if (el) el.innerHTML = '';
+          });
+          ['#editModeBanner', '#bookmarkModal', '#toolModal', '#recentVisitsPopover', '#accentColorPopover', '#brandLogoEditOverlay'].forEach(sel => {
+            const el = cloneDoc.querySelector(sel);
+            if (el) el.classList.add('hidden');
+          });
+          htmlText = '<!DOCTYPE html>\n' + cloneDoc.outerHTML;
         }
 
         const newVer = Date.now();
@@ -1410,7 +1452,7 @@
           const writable = await cachedIndexFileHandle.createWritable();
           await writable.write(updatedHtml);
           await writable.close();
-          showToast('✅ 已直接写入并更新 index.html！现在可直接 git push 或拷贝到其他电脑使用');
+          showToast('✅ 已直接写入并更新纯净版 index.html！');
         } else {
           const blob = new Blob([updatedHtml], { type: 'text/html;charset=utf-8' });
           const url = URL.createObjectURL(blob);
@@ -1555,7 +1597,7 @@
       showToast('🧹 已清空全部最近访问历史');
     }
 
-    // ==================== 11. 左栏：5 大功能模块与各自独立分类目录 ====================
+    // ==================== 11. 左栏：6 大功能模块与各自独立分类目录 ====================
     function getModuleCategoriesWithCounts(modName) {
       const cfg = MODULE_CONFIG[modName] || MODULE_CONFIG.bookmarks;
       const catMap = new Map();
@@ -1589,22 +1631,27 @@
       currentCategory = cat;
 
       document.querySelectorAll('#moduleSwitcher .mod-btn').forEach(btn => {
-        const isCurrent = btn.getAttribute('data-mod') === modName;
-        if (btn.getAttribute('data-mod') === 'bookmarks') {
+        const bMod = btn.getAttribute('data-mod');
+        const isCurrent = bMod === modName;
+        if (bMod === 'bookmarks') {
           btn.className = isCurrent
-            ? 'mod-btn col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all theme-grad-bg text-white shadow-sm'
-            : 'mod-btn col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
+            ? 'mod-btn col-span-2 sm:col-span-3 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all theme-grad-bg text-white shadow-sm'
+            : 'mod-btn col-span-2 sm:col-span-3 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
+        } else if (bMod === 'Software') {
+          btn.className = isCurrent
+            ? 'mod-btn col-span-2 sm:col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold theme-grad-bg text-white shadow-sm transition-all'
+            : 'mod-btn col-span-2 sm:col-span-1 lg:col-span-2 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
         } else {
           btn.className = isCurrent
-            ? 'mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold theme-grad-bg text-white shadow-sm transition-all'
-            : 'mod-btn flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
+            ? 'mod-btn flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold theme-grad-bg text-white shadow-sm transition-all'
+            : 'mod-btn flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-800/50 hover:bg-indigo-500/15 transition-all';
         }
       });
 
       const cfg = MODULE_CONFIG[modName] || MODULE_CONFIG.bookmarks;
       const badge = document.getElementById('currentViewBadge');
       if (badge) {
-        badge.textContent = `当前视图：${cfg.name} ·${cat === 'all' ? '全部' : cat}`;
+        badge.textContent = `当前视图：${cfg.name} · ${cat === 'all' ? '全部' : cat}`;
       }
 
       renderCategories();
@@ -1699,7 +1746,7 @@
       showToast(`🎉 已在「${cfg.name}」下新建分类：${formattedName}`);
     }
 
-    // ==================== 12. 卡片与主工作区渲染 ====================
+    // ==================== 12. 卡片渲染与管理模式拖拽排序实现 ====================
     function createBookmarkCardHtml(bm) {
       const host = extractDomain(bm.url);
       const firstChar = ((bm.title || host || 'W').replace(/[^\w\u4e00-\u9fa5]/g, '')[0] || '⚡').toUpperCase();
@@ -1709,23 +1756,38 @@
       const safeUrl = escapeHtml(bm.url || '#');
       const safeId = escapeHtml(bm.id);
 
+      // 管理模式下开启原生拖拽属性与底部操作栏
+      const dragAttrs = isEditMode
+        ? `draggable="true" ondragstart="handleDragStart(event, '${safeId}')" ondragover="handleDragOver(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${safeId}')" ondragend="handleDragEnd(event)"`
+        : '';
+
       const editActionsHtml = isEditMode ? `
-        <div class="card-action-bar mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-end gap-1.5 relative z-20">
-          <button type="button" onclick="copyBookmarkUrl(event, '${safeUrl}')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-500 hover:text-white dark:bg-slate-800 dark:hover:bg-indigo-600 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition flex items-center gap-1">
-            <span>📋</span><span>复制链接</span>
-          </button>
-          <button type="button" onclick="openBookmarkModal('${safeId}', event)" class="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-white text-[11px] font-semibold text-amber-600 dark:text-amber-400 transition flex items-center gap-1">
-            <span>✏️</span><span>编辑</span>
-          </button>
-          <button type="button" onclick="deleteBookmark('${safeId}', event)" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white text-[11px] font-semibold text-rose-600 dark:text-rose-400 transition flex items-center gap-1">
-            <span>🗑️</span><span>删除</span>
-          </button>
+        <div class="card-action-bar mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-1 relative z-20">
+          <span class="text-[10px] font-mono text-amber-600 dark:text-amber-400 flex items-center gap-1 select-none" title="按住卡片拖动即可调整顺序">
+            <span>⠿</span><span>按住拖拽排序</span>
+          </span>
+          <div class="flex items-center gap-1">
+            <button type="button" onclick="copyBookmarkUrl(event, '${safeUrl}')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-500 hover:text-white dark:bg-slate-800 dark:hover:bg-indigo-600 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition">
+              复制
+            </button>
+            <button type="button" onclick="openBookmarkModal('${safeId}', event)" class="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-white text-[11px] font-semibold text-amber-600 dark:text-amber-400 transition">
+              编辑
+            </button>
+            <button type="button" onclick="deleteBookmark('${safeId}', event)" class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white text-[11px] font-semibold text-rose-600 dark:text-rose-400 transition">
+              删除
+            </button>
+          </div>
         </div>
       ` : '';
 
       return `
-        <div onclick="handleCardClick(event, '${safeId}', '${safeUrl}')" class="specular-card spotlight-card bookmark-card rounded-2xl p-4 cursor-pointer flex flex-col justify-between group h-full">
-          <div class="flex items-start gap-3.5 relative z-10">
+        <div
+          data-bm-id="${safeId}"
+          ${dragAttrs}
+          onclick="handleCardClick(event, '${safeId}', '${safeUrl}')"
+          class="specular-card spotlight-card bookmark-card rounded-2xl p-4 cursor-pointer flex flex-col justify-between group h-full"
+        >
+          <div class="flex items-start gap-3.5 relative z-10 pointer-events-none">
             <!-- 双层渐进式超清图标容器 -->
             <div class="icon-wrapper shrink-0 mt-0.5">
               <div class="icon-container w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800/95 border border-slate-200/80 dark:border-slate-700/70 flex items-center justify-center shadow-sm">
@@ -1756,7 +1818,7 @@
                 <h3 class="font-bold text-[13.5px] text-slate-800 dark:text-slate-100 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors leading-snug break-words">
                   ${escapeHtml(bm.title || host)}
                 </h3>
-                <span class="launch-arrow text-xs font-mono shrink-0 mt-0.5">↗</span>
+                <span class="launch-arrow text-xs font-mono shrink-0 mt-0.5">${isEditMode ? '⠿' : '↗'}</span>
               </div>
               <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed break-words">
                 ${escapeHtml(bm.desc || host)}
@@ -1767,6 +1829,87 @@
         </div>
       `;
     }
+
+    // 拖拽排序核心事件处理函数
+    window.handleDragStart = function(e, bmId) {
+      if (!isEditMode) return;
+      draggedBookmarkId = bmId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', bmId);
+      const card = e.currentTarget;
+      setTimeout(() => card.classList.add('dragging-card'), 0);
+    };
+
+    window.handleDragOver = function(e) {
+      if (!isEditMode || !draggedBookmarkId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    };
+
+    window.handleDragEnter = function(e) {
+      if (!isEditMode || !draggedBookmarkId) return;
+      e.preventDefault();
+      const card = e.currentTarget;
+      if (card.getAttribute('data-bm-id') !== draggedBookmarkId) {
+        card.classList.add('drag-over-card');
+      }
+    };
+
+    window.handleDragLeave = function(e) {
+      const card = e.currentTarget;
+      if (!card.contains(e.relatedTarget)) {
+        card.classList.remove('drag-over-card');
+      }
+    };
+
+    window.handleDrop = function(e, targetBmId) {
+      if (!isEditMode) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const card = e.currentTarget;
+      card.classList.remove('drag-over-card');
+
+      const sourceId = draggedBookmarkId || e.dataTransfer.getData('text/plain');
+      if (!sourceId || sourceId === targetBmId) return;
+
+      const fromIdx = bookmarks.findIndex(b => b.id === sourceId);
+      const toIdx = bookmarks.findIndex(b => b.id === targetBmId);
+      if (fromIdx === -1 || toIdx === -1) return;
+
+      const [movedItem] = bookmarks.splice(fromIdx, 1);
+      const targetItem = bookmarks[bookmarks.findIndex(b => b.id === targetBmId)];
+
+      // 若跨分类拖拽，自动同步为目标卡片所在的分类
+      if (currentModule === 'bookmarks' && targetItem && movedItem.category !== targetItem.category) {
+        movedItem.category = targetItem.category;
+      } else if (currentModule !== 'bookmarks' && targetItem) {
+        const cfg = MODULE_CONFIG[currentModule];
+        const targetModCat = targetItem.modCategory || (cfg?.autoAssignCategory?.(targetItem));
+        if (targetModCat) {
+          movedItem.module = currentModule;
+          movedItem.modCategory = targetModCat;
+        }
+      }
+
+      const newToIdx = bookmarks.findIndex(b => b.id === targetBmId);
+      // 根据原位置决定插入在目标卡片前面还是后面，手感更自然
+      const insertPos = fromIdx < toIdx ? newToIdx + 1 : newToIdx;
+      bookmarks.splice(insertPos, 0, movedItem);
+
+      draggedBookmarkId = null;
+      saveBookmarksToStorage();
+      renderCategories();
+      renderMainContent();
+      showToast(`✨ 已调整「${movedItem.title}」的排列顺序`);
+    };
+
+    window.handleDragEnd = function(e) {
+      draggedBookmarkId = null;
+      document.querySelectorAll('.bookmark-card').forEach(c => {
+        c.classList.remove('dragging-card', 'drag-over-card');
+      });
+    };
 
     function renderMainContent() {
       const container = document.getElementById('mainContent');
@@ -1823,6 +1966,7 @@
                     <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400">${items.length}</span>
                   </h2>
                 </div>
+                ${isEditMode ? `<span class="text-[11px] text-amber-500 font-semibold hidden sm:inline">⠿ 拖拽卡片可自由调整顺序</span>` : ''}
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3.5">
                 ${items.map(bm => createBookmarkCardHtml(bm)).join('')}
@@ -1837,7 +1981,7 @@
           <div class="specular-card rounded-3xl p-12 text-center space-y-3">
             <div class="text-4xl">🔭</div>
             <h3 class="text-base font-bold">未找到匹配的书签或工具</h3>
-            <p class="text-xs text-slate-400">试试其他关键词，或点击上方切换为 Google / Bing 外部搜索</p>
+            <p class="text-xs text-slate-400">试试其他关键词，或点击上方切换为 Google / Bing / 淘宝 / 京东 外部搜索</p>
             <button type="button" onclick="clearSearch()" class="mt-2 px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">清除筛选条件</button>
           </div>
         `;
@@ -1965,7 +2109,7 @@
       renderMainContent();
     }
 
-function quickFilterTag(tag) {
+    function quickFilterTag(tag) {
       currentModule = 'bookmarks';
       currentCategory = 'all';
       setSearchEngine('local');
@@ -1976,7 +2120,6 @@ function quickFilterTag(tag) {
       showToast(`🔥 已快速筛选「${tag}」相关站点`);
     }
 
-    // 补充 UE5 / Epic / Fab / HuggingFace 官方矢量图标至第一层矢量库
     Object.assign(OFFICIAL_BRAND_SVGS, {
       'openai.com': OFFICIAL_BRAND_SVGS['chatgpt.com'],
       'unrealengine.com': `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22C6.486 22 2 17.514 2 12S6.486 2 12 2s10 4.486 10 10-4.486 10-10 10zm3.5-14.5c-.828 0-1.5.672-1.5 1.5v5.25c0 .414-.336.75-.75.75s-.75-.336-.75-.75V8.5c0-1.105-.895-2-2-2s-2 .895-2 2v6.25c0 1.519 1.231 2.75 2.75 2.75.95 0 1.787-.482 2.283-1.215.424.725 1.21 1.215 2.117 1.215 1.381 0 2.5-1.119 2.5-2.5V9c0-.828-.672-1.5-1.5-1.5z"/></svg>`,
@@ -2103,7 +2246,7 @@ function quickFilterTag(tag) {
       if (logoOverlay) logoOverlay.classList.toggle('hidden', !isEditMode);
 
       renderMainContent();
-      showToast(isEditMode ? '⚙️ 已进入管理模式：可编辑卡片、点击左上角换 Logo，或点击左下角一键保存至 index.html' : '✅ 已退出管理模式');
+      showToast(isEditMode ? '⚙️ 已进入管理模式：支持按住卡片拖拽排序、编辑或删除' : '✅ 已退出管理模式');
     }
 
     function populateModalCategories(modName, selectedCat = '') {
@@ -2166,7 +2309,7 @@ function quickFilterTag(tag) {
       if (modal) modal.classList.add('hidden');
     }
 
-    function saveBookmark(e) {
+function saveBookmark(e) {
       e.preventDefault();
       const id = document.getElementById('bmId').value.trim();
       const targetMod = document.getElementById('bmModuleSelect').value;
@@ -2201,7 +2344,7 @@ function quickFilterTag(tag) {
             desc: desc || extractDomain(url),
             customIcon: customIcon || undefined
           };
-          showToast('✅ 书签修改已保存（日常自动留存，如需更新文件请点左下角💾）');
+          showToast('✅ 书签修改已保存（如需同步到源码文件请点左下角💾）');
         }
       } else {
         bookmarks.unshift({
@@ -2229,6 +2372,9 @@ function quickFilterTag(tag) {
       if (!target) return;
       if (confirm(`确定要删除书签「${target.title}」吗？`)) {
         bookmarks = bookmarks.filter(b => b.id !== id);
+        // 同步清理最近访问历史中的对应记录
+        recentVisits = recentVisits.filter(r => r.id !== id);
+        saveRecentVisits();
         saveBookmarksToStorage();
         renderCategories();
         renderMainContent();
@@ -2283,7 +2429,7 @@ function quickFilterTag(tag) {
     function resetDefaultData() {
       if (confirm('确定要重置回初始精选书签数据并重新匹配全部超清图标吗？')) {
         bookmarks = JSON.parse(JSON.stringify(INITIAL_BOOKMARKS));
-        customCategories = JSON.parse(JSON.stringify(INITIAL_CUSTOM_CATS));
+        customCategories = { bookmarks: [], AIStudio: [], CGAssets: [], Media: [], Toolbox: [], Software: [] };
         hdUpgradedCache.clear();
         saveCustomCategories();
         buildOfflineIconMaps();
@@ -2611,7 +2757,7 @@ function quickFilterTag(tag) {
         `UE Linear Vector3: (R=${(r / 255).toFixed(3)}, G=${(g / 255).toFixed(3)}, B=${(b / 255).toFixed(3)})`;
     }
 
-    // ==================== 19. 通用辅助函数 ====================
+    // ==================== 19. 通用辅助函数（含自动销毁与手动关闭的 Toast 引擎） ====================
     function normalizeUrl(url) {
       return (url || '').trim().replace(/\/$/, '').toLowerCase();
     }
@@ -2646,16 +2792,29 @@ function quickFilterTag(tag) {
     function showToast(msg) {
       const container = document.getElementById('toastContainer');
       if (!container) return;
+
+      // 限制同时最多显示 3 条提示，超出自动移除最旧的一条
+      while (container.children.length >= 3) {
+        container.firstElementChild.remove();
+      }
+
       const item = document.createElement('div');
-      item.className = 'toast-animate specular-card px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-xl border border-indigo-500/30 flex items-center gap-2';
-      item.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+      item.className = 'toast-animate specular-card px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-xl border border-indigo-500/30 flex items-center justify-between gap-3 pointer-events-auto';
+      item.innerHTML = `
+        <span>${escapeHtml(msg)}</span>
+        <button type="button" onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs leading-none px-1">✕</button>
+      `;
       container.appendChild(item);
+
       setTimeout(() => {
+        if (!item.isConnected) return;
         item.style.opacity = '0';
         item.style.transform = 'translateY(8px)';
         item.style.transition = 'all 0.25s ease';
-        setTimeout(() => item.remove(), 250);
-      }, 2600);
+        setTimeout(() => {
+          if (item.isConnected) item.remove();
+        }, 250);
+      }, 2400);
     }
 
     window.addEventListener('DOMContentLoaded', initApp);
