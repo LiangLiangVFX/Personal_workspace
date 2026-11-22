@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "个人效率工作台 & 全景书签导航 OS",
+  "version": "10.0.0",
+  "description": "创作者与开发者专属全景书签导航座舱与 8 大纯本地效率工具箱",
+  "icons": {
+    "16": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
+  "action": {
+    "default_icon": "logo.png",
+    "default_title": "一键启动效率工作台"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.open-meteo.com/*",
+    "https://api.microlink.io/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
