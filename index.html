@@ -44,7 +44,7 @@
               <p class="text-[11px] text-slate-400 dark:text-slate-500">Creator &amp; Dev OS</p>
             </div>
           </div>
-          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60">v10</span>
+          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60">v11.0</span>
         </div>
       </div>
 
@@ -67,7 +67,7 @@
         <nav id="categoryNav" class="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-y-auto pb-1 lg:pb-0 mt-2 pr-0.5 flex-1"></nav>
       </div>
 
-      <!-- 3. 底部沉底：精简高频控制坞 + 数据中心入口 -->
+      <!-- 3. 底部沉底：精简高频控制坞 + 云端同步与数据中心入口 -->
       <div class="specular-card rounded-2xl p-3 shrink-0 mt-auto space-y-2">
         <div class="grid grid-cols-2 gap-1.5">
           <button type="button" id="openAddBookmarkBtn" class="px-2.5 py-2 rounded-xl theme-grad-bg text-white text-xs font-semibold flex items-center justify-center gap-1 shadow-sm transition-all hover:scale-[1.02] active:scale-95">
@@ -79,11 +79,11 @@
         </div>
 
         <div class="flex items-center gap-1.5">
-          <button type="button" id="openDataCenterBtn" title="数据中心：备份 / 恢复 / 重复网址体检 / 重置" class="flex-1 py-2 px-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
-            <span>🗂️</span> <span>数据与备份中心</span>
+          <button type="button" id="openDataCenterBtn" title="数据与云端同步中心：GitHub 同步 / 备份 / 重复与死链体检" class="flex-1 py-2 px-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
+            <span>🗂️</span> <span>数据与云同步</span>
           </button>
-          <span id="storageBadgePill" title="所有修改已自动实时持久化到本地扩展存储" class="py-2 px-2 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-mono font-bold shrink-0">
-            ● 自动存
+          <span id="storageBadgePill" title="点击配置或查看 GitHub 云同步状态" class="py-2 px-2 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-mono font-bold shrink-0 cursor-pointer">
+            ● 本地存
           </span>
         </div>
       </div>
@@ -163,7 +163,7 @@
                 type="text"
                 id="searchInput"
                 autocomplete="off"
-                placeholder="输入关键词全站检索（按 / 或 Ctrl+K 聚焦 · Tab 切引擎 · ↑↓+Enter 直达）..."
+                placeholder="输入关键词或拼音首字母检索（按 / 聚焦 · Tab 切引擎 · 1-6 切空间 · Ctrl+点击后台打开）..."
                 class="w-full py-2 bg-transparent text-sm sm:text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
               >
               <div class="flex items-center gap-1.5 shrink-0 ml-2">
@@ -195,11 +195,23 @@
         </div>
       </section>
 
+      <!-- 双机同步冲突保护横幅（仅在检测到另一台设备有未拉取的新改动时自动出现） -->
+      <div id="syncConflictBanner" class="hidden specular-card rounded-2xl p-3.5 border-rose-500/20 bg-rose-500/10 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 text-xs font-semibold text-rose-500 dark:text-rose-400">
+          <span class="text-base">⚠️</span>
+          <span id="syncConflictText">检测到云端存在另一台设备更新的数据，为防误覆盖已暂停自动上传，请选择处理方式：</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" id="conflictPullBtn" class="px-3 py-1.5 rounded-xl theme-solid-bg hover:opacity-90 text-white text-xs font-bold transition">⬇️ 拉取云端最新版</button>
+          <button type="button" id="conflictForcePushBtn" class="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold transition">⬆️ 以本机覆盖云端</button>
+        </div>
+      </div>
+
       <!-- 管理模式提示横幅 -->
       <div id="editModeBanner" class="hidden specular-card rounded-2xl p-3.5 border-amber-500/40 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
           <span class="text-base">⚙️</span>
-          <span>【管理模式】：① 拖卡片排序，或<b>直接拖入左侧分组 / 上方玻璃 Dock</b>；② 左侧分组支持<b>拖拽调序 / 重命名 / 删除</b>；③ 所有改动均已自动永久保存。</span>
+          <span>【管理模式】：① 拖卡片排序，或<b>直接拖入左侧分组 / 上方玻璃 Dock</b>；② 左侧分组支持<b>拖拽调序 / 重命名 / 删除</b>；③ 所有改动已自动保存并交由后台安全同步。</span>
         </div>
         <button type="button" id="exitEditModeBtn" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold shrink-0 transition">完成退出</button>
       </div>
@@ -235,16 +247,16 @@
             </div>
           </div>
 
-          <!-- 组件 2：Open-Meteo 实时天气与温度 -->
+          <!-- 组件 2：三路容灾实时天气与温度 -->
           <div class="specular-card spotlight-card rounded-2xl p-4 relative overflow-hidden">
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-1.5">
                 <span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">实时天气</span>
-                <span id="weatherCityBadge" class="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">定位中...</span>
+                <span id="weatherCityBadge" class="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md cursor-pointer" title="点击刷新实时天气">北京</span>
               </div>
               <select id="citySelector" class="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg px-1.5 py-1 border border-slate-200 dark:border-slate-700 cursor-pointer">
                 <option value="auto">📍 自动定位</option>
-                <option value="39.9042,116.4074,北京">北京</option>
+                <option value="39.9042,116.4074,北京" selected>北京</option>
                 <option value="31.2304,121.4737,上海">上海</option>
                 <option value="23.1291,113.2644,广州">广州</option>
                 <option value="22.5431,114.0579,深圳">深圳</option>
@@ -256,7 +268,7 @@
 
             <div class="flex items-center justify-between my-2">
               <div class="flex items-center gap-3">
-                <div id="weatherIcon" class="text-4xl">⛅</div>
+                <div id="weatherIcon" class="text-4xl cursor-pointer" title="点击刷新实时天气">⛅</div>
                 <div>
                   <div class="flex items-start">
                     <span id="weatherTemp" class="text-3xl font-extrabold font-mono tabular-nums text-slate-800 dark:text-white">--</span>
@@ -383,6 +395,9 @@
 
   <!-- ==================== 自定义书签卡片右键快捷菜单 ==================== -->
   <div id="cardContextMenu" class="hidden fixed z-[60] w-44 specular-card rounded-2xl p-1.5 shadow-2xl border border-slate-200 dark:border-slate-700 text-xs ctx-menu-pop">
+    <button type="button" data-ctx-action="open-bg" class="ctx-menu-item">
+      <span>📑</span><span>后台静默打开</span>
+    </button>
     <button type="button" data-ctx-action="pin" class="ctx-menu-item">
       <span id="ctxPinIcon">⭐</span><span id="ctxPinLabel">置顶到首页</span>
     </button>
@@ -507,35 +522,124 @@
     </div>
   </div>
 
-  <!-- ==================== 弹窗 3：数据与备份管理中心 ==================== -->
+  <!-- ==================== 弹窗 3：数据与云端同步中心（含 GitHub 同步、重复检测与死链体检） ==================== -->
   <div id="dataCenterModal" class="modal-backdrop hidden">
     <div class="specular-card rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4 max-h-[90vh] flex flex-col">
       <div class="flex justify-between items-center shrink-0">
-        <h3 class="text-base font-bold flex items-center gap-2"><span>🗂️</span><span>数据与扩展存储中心</span></h3>
+        <h3 class="text-base font-bold flex items-center gap-2"><span>🗂️</span><span>数据与云端同步中心</span></h3>
         <button type="button" id="closeDataCenterModalBtn" class="modal-close-btn">✕</button>
       </div>
-      <div class="p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/70 text-xs space-y-1 shrink-0">
-        <div class="flex justify-between"><span class="text-slate-400">当前书签总数</span><span id="dcTotalCount" class="font-mono font-bold theme-text">168</span></div>
-        <div class="flex justify-between"><span class="text-slate-400">数据持久化引擎</span><span id="storageStatusBadge" class="font-mono font-semibold text-emerald-500">Chrome 扩展本地存储</span></div>
+
+      <div class="overflow-y-auto pr-1 space-y-3.5 flex-1">
+        <div class="p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/70 text-xs space-y-1">
+          <div class="flex justify-between"><span class="text-slate-400">当前书签总数</span><span id="dcTotalCount" class="font-mono font-bold theme-text">168</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">数据持久化引擎</span><span id="storageStatusBadge" class="font-mono font-semibold text-emerald-500">Chrome 扩展本地存储</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">快捷收藏 / 地址栏直搜</span><span class="font-mono text-slate-500 dark:text-slate-400">右键 或 Alt+S · 地址栏 ws</span></div>
+        </div>
+
+        <!-- GitHub 私有 Gist 跨设备自动同步区 -->
+        <div class="p-3.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-indigo-500/30 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold flex items-center gap-1.5"><span>☁️</span><span>GitHub 私有 Gist 云同步</span></span>
+            <span id="ghSyncStatusText" class="text-[10px] font-mono text-slate-400">未配置</span>
+          </div>
+
+          <div>
+            <label class="field-label">GitHub Token（仅需勾选 gist 权限 · 输入自动保存）</label>
+            <input type="password" id="ghTokenInput" autocomplete="off" placeholder="粘贴 ghp_... 或 github_pat_..." class="field-input text-xs font-mono">
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="field-label mb-0">Gist ID（首次上传留空自动创建）</label>
+              <button type="button" id="ghCopyGistIdBtn" class="text-[11px] font-semibold theme-text hover:underline">复制 ID</button>
+            </div>
+            <input type="text" id="ghGistIdInput" autocomplete="off" placeholder="A电脑上传后自动生成，填到B电脑即可互通" class="field-input text-xs font-mono">
+          </div>
+
+          <label class="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+            <input type="checkbox" id="ghAutoSyncToggle" checked class="rounded accent-indigo-600 w-3.5 h-3.5">
+            <span>后台防漏传 · 唤醒自动拉取 · 同步书签/便签/待办与界面偏好</span>
+          </label>
+
+          <div class="grid grid-cols-3 gap-1.5 pt-1">
+            <button type="button" id="ghSaveConfigBtn" class="py-1.5 px-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:opacity-90 font-semibold transition">💾 保存配置</button>
+            <button type="button" id="ghPushBtn" class="py-1.5 px-2 rounded-xl theme-solid-bg text-white hover:opacity-90 font-semibold transition">⬆️ 立即上传</button>
+            <button type="button" id="ghPullBtn" class="py-1.5 px-2 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 font-semibold transition">⬇️ 立即拉取</button>
+          </div>
+        </div>
+
+        <!-- 本地 JSON 备份 / 恢复 / 重复网址与死链体检 -->
+        <div class="grid grid-cols-2 gap-2.5 text-xs">
+          <button type="button" id="dcExportBtn" class="p-3 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-500/30 transition text-left space-y-1">
+            <div>📤 导出 JSON 备份</div>
+            <div class="text-[10px] opacity-75 font-normal">含书签、便签、待办与偏好</div>
+          </button>
+          <label class="p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 font-semibold transition text-left space-y-1 cursor-pointer">
+            <div>📥 导入恢复 JSON</div>
+            <div class="text-[10px] text-slate-400 font-normal">跨设备迁移或恢复历史备份</div>
+            <input type="file" id="importFile" accept=".json" class="hidden">
+          </label>
+          <button type="button" id="dcScanDupBtn" class="p-2.5 rounded-xl bg-amber-500/12 hover:bg-amber-500 hover:text-white text-amber-600 dark:text-amber-300 border border-amber-500/25 font-bold transition flex items-center justify-center gap-1">
+            <span>🔍</span><span>重复网址检测</span>
+          </button>
+          <button type="button" id="dcCheckLinksBtn" class="p-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold transition flex items-center justify-center gap-1">
+            <span>🩺</span><span>书签死链体检</span>
+          </button>
+        </div>
+
+        <div id="duplicateReportBox" class="hidden overflow-y-auto max-h-48 p-3 rounded-xl bg-slate-100/80 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-700/70 text-xs space-y-2"></div>
+
+        <!-- 分层维护与重置管理（安全补全 + 轻度复位 + 折叠危险区） -->
+        <div class="p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-bold flex items-center gap-1.5"><span>🛠️</span><span>书签补全与维护</span></span>
+            <span class="text-[10px] font-mono text-emerald-500">防误覆盖保护</span>
+          </div>
+
+          <!-- 🟢 安全补全 & 🟡 轻度复位 -->
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" id="dcMergeDefaultBtn" class="p-2.5 rounded-xl bg-emerald-500/10 hover:opacity-90 text-emerald-500 border border-emerald-500/20 font-bold transition text-left space-y-1">
+              <div>✨ 补全默认书签</div>
+              <div class="text-[10px] text-slate-400 font-normal">仅增不删，保留自建内容</div>
+            </button>
+            <button type="button" id="dcResetUiBtn" class="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700/60 font-semibold transition text-left space-y-1">
+              <div>🎨 重置界面与缓存</div>
+              <div class="text-[10px] text-slate-400 font-normal">恢复默认外观，不动书签</div>
+            </button>
+          </div>
+
+          <!-- ↩️ 若存在重置前快照，直接提供一键后悔药 -->
+          <button type="button" id="dcRestoreSnapshotBtn" class="hidden w-full py-2 px-3 rounded-xl theme-solid-bg hover:opacity-90 text-white font-bold transition flex items-center justify-center gap-1.5">
+            <span>↩️</span><span id="dcRestoreSnapshotText">恢复上次重置前的本机快照</span>
+          </button>
+
+          <!-- 🔴 折叠危险区（默认收起，杜绝误触） -->
+          <div class="pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+            <button type="button" id="dcDangerToggleBtn" class="w-full py-1.5 px-2 rounded-lg text-[11px] font-semibold text-rose-500 hover:bg-rose-500/10 flex items-center justify-between transition">
+              <span>⚠️ 危险操作：恢复出厂设置 / 清空本机</span>
+              <span id="dcDangerArrow" class="font-mono">▾</span>
+            </button>
+
+            <div id="dcDangerBox" class="hidden mt-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 space-y-2">
+              <div class="text-[10px] text-rose-500 dark:text-rose-400 leading-relaxed">
+                🛡️ 安全机制：执行前自动备份本机快照，且<b>仅作用于本机，不会自动覆盖 GitHub 云端</b>。
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="dcResetBtn" class="py-2 px-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold transition">
+                  🔄 恢复出厂默认
+                </button>
+                <button type="button" id="dcClearAllBtn" class="py-2 px-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold transition">
+                  🧹 清空全部书签
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="grid grid-cols-2 gap-2.5 text-xs shrink-0">
-        <button type="button" id="dcExportBtn" class="p-3 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 hover:text-white text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-500/30 transition text-left space-y-1">
-          <div>📤 导出 JSON 备份</div>
-          <div class="text-[10px] opacity-75 font-normal">含全量书签、分组、便签与待办</div>
-        </button>
-        <label class="p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 font-semibold transition text-left space-y-1 cursor-pointer">
-          <div>📥 导入恢复 JSON</div>
-          <div class="text-[10px] text-slate-400 font-normal">跨设备迁移或恢复历史备份</div>
-          <input type="file" id="importFile" accept=".json" class="hidden">
-        </label>
-        <button type="button" id="dcScanDupBtn" class="col-span-2 p-2.5 rounded-xl bg-amber-500/12 hover:bg-amber-500 hover:text-white text-amber-600 dark:text-amber-300 border border-amber-500/25 font-bold transition flex items-center justify-center gap-1.5">
-          <span>🔍</span><span>一键检测并清理重复网址书签</span>
-        </button>
-      </div>
-      <div id="duplicateReportBox" class="hidden overflow-y-auto max-h-44 p-3 rounded-xl bg-slate-100/80 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-700/70 text-xs space-y-2"></div>
 
       <div class="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex justify-between items-center shrink-0">
-        <button type="button" id="dcResetBtn" class="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-semibold transition">🔄 重置为初始 168 条</button>
+        <span class="text-[10px] font-mono text-slate-400">🛡️ 本机重置不污染云端 Gist</span>
         <button type="button" id="closeDataCenterFooterBtn" class="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-semibold">关闭</button>
       </div>
     </div>
@@ -555,8 +659,9 @@
   <!-- Toast 消息浮层 -->
   <div id="toastContainer" class="fixed bottom-20 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-  <!-- 纯本地离线脚本加载 -->
+  <!-- 纯本地离线脚本加载（种子数据与核心引擎解耦） -->
   <script src="js/bookmarks-data.js"></script>
+  <script src="js/default-bookmarks.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

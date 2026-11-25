@@ -1,21 +1,45 @@
 /* ==========================================================================
-   个人效率工作台 & 全景书签导航 OS — Manifest V3 纯离线扩展核心引擎 (v10.0)
-   100% 遵循 MV3 CSP：零内联脚本、零内联事件、chrome.storage.local 实时自动持久化
+   个人效率工作台 & 全景书签导航 OS — Manifest V3 纯离线扩展核心引擎 (v11.0 最终版)
    ========================================================================== */
 
 (() => {
   'use strict';
 
+  // ==================== 0. 种子数据读取与防崩兜底 ====================
+  const DEFAULT_DATA = window.WS_DEFAULT_DATA || {};
+  const FALLBACK_SPACES = [
+    { id: 'home',     icon: '🏠', name: '首页聚焦',   grad: 'from-amber-500 to-rose-500',   virtual: true },
+    { id: 'ai',       icon: '🤖', name: 'AI 创作',    grad: 'from-indigo-500 to-purple-600' },
+    { id: 'cg',       icon: '🎮', name: 'CG & 3D',    grad: 'from-blue-500 to-cyan-500' },
+    { id: 'media',    icon: '🎬', name: '媒体设计',   grad: 'from-fuchsia-500 to-orange-500' },
+    { id: 'software', icon: '📦', name: '软件运维',   grad: 'from-emerald-500 to-teal-600' },
+    { id: 'tools',    icon: '🛠️', name: '本地工具',   grad: 'from-cyan-500 to-indigo-600',  isTools: true }
+  ];
+  const FALLBACK_SPACE_GROUPS = {
+    ai: ['🧠 对话与搜索', '🎨 绘画与 ComfyUI', '🎬 视频与音频'],
+    cg: ['🎮 UE5 与实时特效', '🧊 3D 模型与扫描', '🏴‍☠️ 海外 CG 宝库', '🌍 PBR 材质与 HDRI'],
+    media: ['🔥 社区与工作台', '✂️ 图像与文档工具', '🎨 字体、素材与音乐'],
+    software: ['🧰 装机必备软件', '💻 绿色软件与脚本', '🌐 建站与云服务', '🚀 网络加速专线']
+  };
+
+  const SPACES_CONFIG = (Array.isArray(DEFAULT_DATA.SPACES_CONFIG) && DEFAULT_DATA.SPACES_CONFIG.length > 0)
+    ? DEFAULT_DATA.SPACES_CONFIG
+    : FALLBACK_SPACES;
+  const INITIAL_SPACE_GROUPS = (DEFAULT_DATA.INITIAL_SPACE_GROUPS && typeof DEFAULT_DATA.INITIAL_SPACE_GROUPS === 'object')
+    ? DEFAULT_DATA.INITIAL_SPACE_GROUPS
+    : FALLBACK_SPACE_GROUPS;
+  const INITIAL_BOOKMARKS = Array.isArray(DEFAULT_DATA.INITIAL_BOOKMARKS) ? DEFAULT_DATA.INITIAL_BOOKMARKS : [];
+
   // ==================== 1. 8 大纯本地效率小工具定义 ====================
   const BUILTIN_TOOLS = [
     { id: 'tool-json', title: 'JSON 格式化 / 压缩校验', desc: '纯浏览器本地校验、美化缩进与单行压缩 JSON 数据，支持一键复制结果', icon: '📋', type: 'json' },
     { id: 'tool-text', title: '字数统计 & 文本按行去重', desc: '实时统计总字符、中文字数、英文单词与行数，支持一键按行去重与清理空行', icon: '📝', type: 'text' },
-    { id: 'tool-radius', title: '本地图片圆角合成器', desc: '基于 HTML5 Canvas 纯本地处理图片圆角并导出透明 PNG，零上传保护隐私', icon: '🖼️', type: 'radius' },
+    { id: 'tool-radius', title: '本地图片圆角合成器', desc: '支持 Ctrl+V 粘贴截图与拖拽图片，基于 Canvas 纯本地合成透明圆角 PNG', icon: '🖼️', type: 'radius' },
     { id: 'tool-time', title: '时间戳 & UE5 材质颜色转换', desc: 'Unix 时间戳互转、HEX 转 RGB 及 UE5 Material 线性浮点 (0.0~1.0) 颜色换算', icon: '⏱️', type: 'time' },
-    { id: 'tool-palette', title: '图片吸管取色 & 调色板提取', desc: '拖入本地参考图或原画，点击画面任意像素吸取 HEX / UE5 线性色值并提取主色调色板', icon: '🎨', type: 'palette' },
-    { id: 'tool-converter', title: '本地图片格式转换 & 压缩', desc: '纯本地将 WebP / PNG / JPG 批量互转格式、按比例缩放尺寸与调节画质体积', icon: '🔄', type: 'converter' },
+    { id: 'tool-palette', title: '图片吸管取色 & 主色聚类调色板', desc: '支持 Ctrl+V 粘贴/拖拽原画，吸取 UE5 线性色值并智能聚类提取 6 大主色调', icon: '🎨', type: 'palette' },
+    { id: 'tool-converter', title: '本地图片格式转换 & 压缩', desc: '支持 Ctrl+V 粘贴/拖拽图片，纯本地互转 WebP/PNG/JPG 并实时调节尺寸与体积', icon: '🔄', type: 'converter' },
     { id: 'tool-cgcalc', title: 'CG 帧率时间码 & 分辨率计算', desc: '动画帧数(Frames)与时间码(24/25/30/60fps)互转，以及 16:9 / 21:9 画幅像素换算', icon: '🎬', type: 'cgcalc' },
-    { id: 'tool-codec', title: '编码加解密 & 强密码生成', desc: '支持 Base64 编解码、URL 链接编解码与高强度随机安全密钥一键生成', icon: '🔐', type: 'codec' }
+    { id: 'tool-codec', title: '编码加解密 & 强密码生成', desc: '基于标准 UTF-8 的 Base64 / URL 编解码与高强度随机安全密钥一键生成', icon: '🔐', type: 'codec' }
   ];
 
   // ==================== 2. 官方原版矢量 SVG 图标字典 ====================
@@ -41,203 +65,9 @@
 
   const FALLBACK_FAVICON_SVG = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>';
 
-  // ==================== 3. 单一真源：6 大工作空间与全量 168 个书签 ====================
-  const SPACES_CONFIG = [
-    { id: 'home',     icon: '🏠', name: '首页聚焦',   grad: 'from-amber-500 to-rose-500',   virtual: true },
-    { id: 'ai',       icon: '🤖', name: 'AI 创作',    grad: 'from-indigo-500 to-purple-600' },
-    { id: 'cg',       icon: '🎮', name: 'CG & 3D',    grad: 'from-blue-500 to-cyan-500' },
-    { id: 'media',    icon: '🎬', name: '媒体设计',   grad: 'from-fuchsia-500 to-orange-500' },
-    { id: 'software', icon: '📦', name: '软件运维',   grad: 'from-emerald-500 to-teal-600' },
-    { id: 'tools',    icon: '🛠️', name: '本地工具',   grad: 'from-cyan-500 to-indigo-600',  isTools: true }
-  ];
-
-  const INITIAL_SPACE_GROUPS = {
-    ai: ['🧠 对话与搜索', '🎨 绘画与 ComfyUI', '🎬 视频与音频'],
-    cg: ['🎮 UE5 与实时特效', '🧊 3D 模型与扫描', '🏴‍☠️ 海外 CG 宝库', '🌍 PBR 材质与 HDRI'],
-    media: ['🔥 社区与工作台', '✂️ 图像与文档工具', '🎨 字体、素材与音乐'],
-    software: ['🧰 装机必备软件', '💻 绿色软件与脚本', '🌐 建站与云服务', '🚀 网络加速专线']
-  };
-
-  const INITIAL_BOOKMARKS = [
-    // 🤖 AI 创作 (28)
-    { id: 'a1', space: 'ai', group: '🧠 对话与搜索', title: 'ChatGPT (OpenAI)', url: 'https://chatgpt.com/', desc: 'OpenAI 旗舰级对话大模型，支持代码编写、逻辑推理与多模态分析', pinned: true },
-    { id: 'a2', space: 'ai', group: '🧠 对话与搜索', title: 'Google Gemini', url: 'https://gemini.google.com/app', desc: 'Google 原生超长上下文多模态 AI 助手，擅长复杂项目分析与创作', pinned: true },
-    { id: 'a3', space: 'ai', group: '🧠 对话与搜索', title: 'Kimi 智能助手', url: 'https://www.kimi.com/', desc: '月之暗面出品，擅长超长文档解析、联网搜索与深度思考的 AI 助手' },
-    { id: 'a4', space: 'ai', group: '🧠 对话与搜索', title: 'Perplexity AI 深度搜索', url: 'https://www.perplexity.ai/', desc: 'AI 驱动的实时学术与全网深度搜索引擎，自动附带真实信源引用' },
-    { id: 'a5', space: 'ai', group: '🧠 对话与搜索', title: 'SiliconCloud 硅基流动', url: 'https://cloud.siliconflow.cn/models', desc: '高性价比一站式开源大模型 API 调用（DeepSeek/Qwen/FLUX）与推理云平台' },
-    { id: 'a6', space: 'ai', group: '🧠 对话与搜索', title: 'Coze 扣子 AI 智能体探索', url: 'https://www.coze.com/explore', desc: '新一代 AI Bot 智能体搭建、插件工作流编排与创意应用商店' },
-    { id: 'a7', space: 'ai', group: '🧠 对话与搜索', title: 'Merlin AI 多模型聚合助手', url: 'https://www.getmerlin.in/chat', desc: '集成多款主流大模型的在线 AI 聊天、网页摘要与写作助手' },
-    { id: 'a8', space: 'ai', group: '🧠 对话与搜索', title: 'AI 工具集导航大全', url: 'https://ai-bot.cn/', desc: '收录国内外 500+ 款写作、绘画、视频、编程与办公 AI 工具的权威分类导航' },
-    { id: 'p1', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'Civitai (C站全球模型库)', url: 'https://civitai.com/', desc: '全球最大的 Stable Diffusion & FLUX Checkpoint、LoRA 模型与返图社区', pinned: true },
-    { id: 'p2', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'LiblibAI 哩布哩布 AI', url: 'https://www.liblib.art/', desc: '国内领先的 AI 绘画模型下载、在线 ComfyUI 工作流与生图平台' },
-    { id: 'p3', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'FLUX 模型合集 (Replicate)', url: 'https://replicate.com/collections/flux', desc: 'Black Forest Labs 出品的 FLUX 系列图像生成模型云端在线运行库' },
-    { id: 'p4', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'Krea AI 实时生图与画质放大', url: 'https://www.krea.ai/home', desc: '支持画布实时涂鸦生图、AI 超分辨率画质增强与细节重绘工具' },
-    { id: 'p5', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'OpenArt ComfyUI 工作流中心', url: 'https://openart.ai/workflows/home?appSort=featured', desc: '全球精选 ComfyUI 节点工作流在线浏览、一键下载与云端运行平台' },
-    { id: 'p6', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'Comflowy 中文实战百科', url: 'https://www.comflowy.com/zh-CN', desc: '系统化中文 ComfyUI 与 Stable Diffusion 从入门到精通实战指南' },
-    { id: 'p13', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'PromptHero 提示词搜索引擎', url: 'https://prompthero.com/', desc: '全球领先的 Midjourney、Stable Diffusion 与 FLUX 优质提示词检索库' },
-    { id: 'p15', space: 'ai', group: '🎨 绘画与 ComfyUI', title: '商汤秒画 SenseMirage', url: 'https://miaohua.sensetime.com/generate', desc: '商汤科技出品的免费中文 AI 作画、模型训练与高细节图像生成平台' },
-    { id: 'p17', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'Stability.AI 官方主页', url: 'https://stability.ai/', desc: '开源生成式 AI 领军企业，提供图像、视频、音频、3D 与语言大模型生态' },
-    { id: 'p18', space: 'ai', group: '🎨 绘画与 ComfyUI', title: '腾讯 ARC 人像画质修复与抠图', url: 'https://arc.tencent.com/en/ai-demos/imgRestore', desc: '腾讯 AI 实验室在线工具：支持模糊人脸高清还原、动漫增强与智能抠像' },
-    { id: 'p20', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'ImgUpscaler AI 图像无损放大', url: 'https://imgupscaler.com/zh-tw', desc: '支持批量免费将数码照片、CG 渲染图与动漫插画放大至 4K 高清分辨率' },
-    { id: 'p22', space: 'ai', group: '🎨 绘画与 ComfyUI', title: 'PicMa 一站式 AI 影像增强', url: 'https://picma.magictiger.ai/zh', desc: '集成老照片修复、上色、去划痕与 AI 视频画质增强的在线工具箱' },
-    { id: 'v1', space: 'ai', group: '🎬 视频与音频', title: 'PixVerse AI 视频创作', url: 'https://pixverse.ai/', desc: '支持文生视频、图生视频与角色一致性动画的高清 AI 视频生成平台' },
-    { id: 'v2', space: 'ai', group: '🎬 视频与音频', title: 'DomoAI 视频转绘与风格化', url: 'https://www.domoai.app/en/create/video?utm_source=youtube', desc: '将实拍视频一键转换为日漫、3D 卡通、像素或写实 CG 风格的 AI 视频工具' },
-    { id: 'v3', space: 'ai', group: '🎬 视频与音频', title: 'HeyGen AI 数字人视频', url: 'https://app.heygen.com/home', desc: '专业级 AI 口播数字人视频生成、多语种嘴型同步与视频翻译工作台' },
-    { id: 'v4', space: 'ai', group: '🎬 视频与音频', title: 'MOTORICA AI 动作生成 (To UE5)', url: 'https://www.motorica.ai/', desc: '专为游戏开发与 UE5 打造的 AI 骨骼动画生成与运动风格迁移平台' },
-    { id: 'v5', space: 'ai', group: '🎬 视频与音频', title: 'Swapface AI 实时视频换脸', url: 'https://swapface.org/#/home', desc: '轻量化高逼真度 AI 视频与直播实时面部替换工具' },
-    { id: 'v7', space: 'ai', group: '🎬 视频与音频', title: 'MyHeritage 老照片动起来', url: 'https://www.myheritage.com/site-1630592616/l', desc: 'DeepNostalgia 技术：让静态人物肖像照片自动生成自然的眨眼与微笑动态' },
-    { id: 'v8', space: 'ai', group: '🎬 视频与音频', title: 'Fish Audio 声音克隆与 TTS', url: 'https://fish.audio/zh-CN/', desc: '高自然度 AI 语音合成、多角色情感配音与几秒样本极速声音克隆平台' },
-    { id: 'v9', space: 'ai', group: '🎬 视频与音频', title: 'Adobe Podcast 录音智能降噪', url: 'https://podcast.adobe.com/', desc: 'Adobe 出品 AI 人声增强工具，一键消除环境噪音并将普通录音提升至录音棚音质' },
-
-    // 🎮 CG & 3D (53)
-    { id: 'u1', space: 'cg', group: '🎮 UE5 与实时特效', title: 'Epic 虚幻引擎官方开发者社区', url: 'https://dev.epicgames.com/community/unreal-engine/getting-started/games', desc: 'Unreal Engine 5 官方入门路径、技术文档、Lumen/Nanite 教程与技术论坛' },
-    { id: 'u2', space: 'cg', group: '🎮 UE5 与实时特效', title: 'Fab (Epic 虚幻引擎官方新商城)', url: 'https://www.fab.com/', desc: '原 Unreal Engine Marketplace 升级版，汇聚商业级 UE5 场景、Niagara 特效与 Megascans 资产', pinned: true },
-    { id: 'u3', space: 'cg', group: '🎮 UE5 与实时特效', title: 'Real Time VFX 实时特效论坛', url: 'https://realtimevfx.com/c/general/9', desc: '全球最权威的游戏实时特效（UE5/Unity）制作思路、Shader 拆解与赛事社区' },
-    { id: 'u4', space: 'cg', group: '🎮 UE5 与实时特效', title: '魔法盒 Magesbox 游戏特效网', url: 'https://www.magesbox.com/', desc: '国内专业的游戏特效学习、Niagara 案例分享、作品交易与灵感捕获 CG 平台' },
-    { id: 'u5', space: 'cg', group: '🎮 UE5 与实时特效', title: 'blueprintUE 蓝图代码可视化分享', url: 'https://blueprintue.com/', desc: '在线直接粘贴、网页端缩放预览与分享 Unreal Engine 蓝图节点代码的社区' },
-    { id: 'u6', space: 'cg', group: '🎮 UE5 与实时特效', title: '80 Level 国际游戏美术专栏', url: 'https://80.lv/', desc: '全球顶尖 3A 游戏场景美术、材质制作、UE5 灯光渲染与 VFX 幕后深度专访' },
-    { id: 'u8', space: 'cg', group: '🎮 UE5 与实时特效', title: 'GameFX 韩国游戏特效学院', url: 'https://gamefx.co.kr/', desc: '韩国顶级次世代游戏 VFX 视觉特效、刀光技能与引擎材质课程展示站' },
-    { id: 'u9', space: 'cg', group: '🎮 UE5 与实时特效', title: 'VFExtra - UE5 VFX 专用工具集', url: 'https://www.nielsdewitte.be/VFExtra/', desc: '独立技术美术开发的 Unreal Engine 实用特效纹理生成、流体烘焙与辅助工具' },
-    { id: 'u10', space: 'cg', group: '🎮 UE5 与实时特效', title: 'Hoj Dee - UE5 材质与特效博客', url: 'https://hojdee.com/', desc: '专注虚幻引擎 Shader 材质算法、Niagara 粒子与程序化生成技术的深度个人博客' },
-    { id: 'u11', space: 'cg', group: '🎮 UE5 与实时特效', title: 'HeyYo CG - Niagara 实用案例库', url: 'https://heyyocg.link/', desc: '精选 UE5 Niagara 粒子系统进阶模块应用、交互特效与工程实现笔记' },
-    { id: 'u15', space: 'cg', group: '🎮 UE5 与实时特效', title: 'FootageCrate 4K 影视VFX特效素材库', url: 'https://vfx.productioncrate.com/', desc: '海量带透明通道的 4K 爆炸、烟雾、魔法粒子、能量光束视频素材与音效库' },
-    { id: 'u16', space: 'cg', group: '🎮 UE5 与实时特效', title: 'LookAE 大众脸影视后期特效', url: 'https://www.lookae.com/', desc: '国内知名 AE/PR/C4D/达芬奇/UE 插件、汉化补丁、模板与后期视觉特效资源站' },
-    { id: 'u17', space: 'cg', group: '🎮 UE5 与实时特效', title: '爱学习的老土狗 CG 游戏特效课程', url: 'http://www.cgltg.com/', desc: '专注国内游戏特效师技能进阶、UE5 特效实战课程与行业资源分享平台' },
-    { id: 'u18', space: 'cg', group: '🎮 UE5 与实时特效', title: 'Vfxmed 全三维软件 CG 资源与课程库', url: 'https://www.vfxmed.com/', desc: '涵盖 Houdini、UE5、Blender、Maya、C4D 全套海外高端 CG 教程与插件资源站' },
-    { id: 'u19', space: 'cg', group: '🎮 UE5 与实时特效', title: 'UnityUnreal 虚幻引擎商业资产站', url: 'https://unityunreal.com/unreal-engine-assets/', desc: '海量 Unreal Engine 完整场景工程、动作包、Niagara 特效与蓝图系统资源下载' },
-    { id: 'u20', space: 'cg', group: '🎮 UE5 与实时特效', title: 'GameAssetsFree 免费虚幻引擎资产', url: 'https://gameassetsfree.com/assets-ue/', desc: '免费分享 Unreal Engine 商城环境建筑、武器道具、材质包与游戏特效资产' },
-    { id: 'm1', space: 'cg', group: '🧊 3D 模型与扫描', title: 'CGTrader 全球 3D 模型交易平台', url: 'https://www.cgtrader.com/', desc: '超百万级专业 PBR 游戏模型、概念载具、建筑组件与 3D 打印资产下载市场' },
-    { id: 'm2', space: 'cg', group: '🧊 3D 模型与扫描', title: 'Sketchfab Store 在线 3D 资产商店', url: 'https://sketchfab.com/store', desc: '支持在浏览器内直接 360° 实时查看拓扑、骨骼动画与 PBR 贴图通道的 3D 模型库' },
-    { id: 'm3', space: 'cg', group: '🧊 3D 模型与扫描', title: 'KitBash3D 殿堂级电影/游戏场景资产包', url: 'https://kitbash3d.com/', desc: '好莱坞与 3A 游戏工作室御用的赛博朋克、废土、科幻与奇幻世界大型 3D 建筑资产' },
-    { id: 'm4', space: 'cg', group: '🧊 3D 模型与扫描', title: 'Daz 3D 高精度角色与服装官方商城', url: 'https://www.daz3d.com/shop', desc: '全球最大的写实 3D 人物基底模型、精致毛发、服装道具与表情姿态资产官网' },
-    { id: 'm5', space: 'cg', group: '🧊 3D 模型与扫描', title: '3D Warehouse (SketchUp 海量模型库)', url: 'https://3dwarehouse.sketchup.com/', desc: '涵盖全球真实建筑、室内家居、城市街道设施与景观构件的免费三维模型库' },
-    { id: 'm6', space: 'cg', group: '🧊 3D 模型与扫描', title: 'PBRMAX 国产超高清 3D 扫描资产库', url: 'https://www.pbrmax.cn/discover?lan=zh-CN', desc: '专注中国古建、非遗文物、东方自然植被与现代道具的影视级全流程 PBR 资产平台' },
-    { id: 'm8', space: 'cg', group: '🧊 3D 模型与扫描', title: 'HyperHuman (Deemos) 照片生成3D角色', url: 'https://hyperhuman.deemos.com/chatavatar', desc: '根据照片或自然语言描述自动生成带拓扑贴图的写实 3D 角色资产' },
-    { id: 'm18', space: 'cg', group: '🧊 3D 模型与扫描', title: 'WireWheelsClub 高精细度免费汽车模型', url: 'https://wirewheelsclub.com/', desc: '由资深汽车建模师维护的高精度免费可商用汽车 3D 模型下载站' },
-    { id: 'm29', space: 'cg', group: '🧊 3D 模型与扫描', title: 'Triplegangers 影视级真人 3D 光学扫描', url: 'https://triplegangers.com/', desc: '提供超高精度真人全身、多表情头部光学扫描模型与微孔级皮肤贴图参考' },
-    { id: 'm9', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'CG Persia 殿堂级海外 CG 资源站', url: 'https://cgpersia.com/', desc: '全球最具影响力的 CG 软件、渲染器插件、大师级海外教程与 3D 资产每日更新站' },
-    { id: 'm10', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'GFXCamp CG 资源营地', url: 'https://www.gfxcamp.com/', desc: '免费分享最新三维软件、AE/C4D/Blender 插件、UE 资产与高清素材的综合平台' },
-    { id: 'm12', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: '画忆妙妙屋 (IIICG) 精品场景资源', url: 'https://www.iiicg.com/', desc: '国内聚焦高品质 UE5 三维概念场景、大型环境地貌工程与次世代 CG 美术资产站' },
-    { id: 'm13', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'AN 素材库 (影视与游戏 CG 资产)', url: 'https://www.ansucai.com/', desc: '收录丰富三维场景模型、VFX 视频素材与工程模板的综合设计素材网' },
-    { id: 'm15', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'Desire FX 3D Models', url: 'https://desirefx.me/', desc: '老牌海外 3D 模型、FBX/OBJ 通用资产与影视特效教程资源免费下载站' },
-    { id: 'm16', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: '3D-MODEL.org 通用三维模型网', url: 'https://3d-model.org/', desc: '按分类整理的家具、载具、植物与建筑 3ds Max / Blender 通用模型下载库' },
-    { id: 'm17', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: '3Dnchu 日本 CG 行业资讯与免费资产', url: 'https://3dnchu.com/category/', desc: '日本知名 CG 媒体，第一时间汇总全球免费 3D 模型、Blender 插件与 UE5 前沿情报' },
-    { id: 'm19', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'GFX-HUB 海外 CG 资产中心', url: 'https://gfx-hub.co/', desc: '高频更新的海外 3D 角色模型、ZBrush 笔刷、Substance 材质与游戏资产聚合网' },
-    { id: 'm20', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'Render-State (Daz3D 角色资产库)', url: 'https://render-state.to/', desc: '专门收录 Daz 3D Genesis 系列人物角色、服装、发型、灯光与动作包的下载站' },
-    { id: 'm22', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'GFXFather 高速直链 CG 资源库', url: 'https://gfxfather.com/', desc: '支持 IDM 满速直连下载的海外全品类 CG 教程、软件直装包与 3D 工程资产站' },
-    { id: 'm23', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'Psdly.to 海外 CG 课程与 3D 资产站', url: 'https://www.psdly.to/', desc: '持续更新 Gumroad / Wingfox / ArtStation 热门三维建模教程与设计资产下载站' },
-    { id: 'm24', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'GoDownloads.net 综合 CG 下载站', url: 'https://godownloads.net/', desc: '涵盖 3D 打印模型、游戏低模资产、贴图包与主流设计软件的海外下载平台' },
-    { id: 'm25', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'CGgoat 视觉与三维设计素材网', url: 'https://www.cggoat.com/', desc: '国内面向三维设计师与后期师的精品 C4D/Blender 模型、贴图与样机素材社区' },
-    { id: 'm26', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'GSan 设计 (cgsan.vip)', url: 'https://cgsan.vip/', desc: '精心整理的国内 CG 建模、渲染插件、材质球与工程资源分享小站' },
-    { id: 'm27', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'UnrealAll 虚幻商城全量免费资产', url: 'https://unrealall.com/', desc: '专注 Unreal Engine 虚幻引擎各版本环境、特效、动作与插件资源的免费归档站' },
-    { id: 'm28', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'CG3DA 免费 3D CG 资源平台', url: 'https://www.cg3da.com/', desc: '免费分享游戏次世代角色、场景模型、动作捕捉文件与 PBR 贴图的国内平台' },
-    { id: 'm30', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: 'CGDownload.ru 俄罗斯超全 CG 武器库', url: 'https://cgdownload.ru/', desc: '俄罗斯顶级免费 CG 宝库，每日海量更新 UE5 资产、3D 模型、插件与大师教程' },
-    { id: 'm31', space: 'cg', group: '🏴‍☠️ 海外 CG 宝库', title: '渲染 101 云渲染农场工作台', url: 'https://xuanran101.com/member/account/login.html', desc: '支持 3ds Max / Maya / C4D / Blender 批量云端极速渲染与项目管理后台' },
-    { id: 't1', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'Poly Haven (CC0 免费 16K HDRI 与材质)', url: 'https://polyhaven.com/hdris', desc: '100% 免费无版权 CC0 协议的 8K/16K 户外室内 HDRI 环境光、PBR 材质与扫描模型库', pinned: true },
-    { id: 't2', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'ambientCG 免费 CC0 PBR 无缝材质库', url: 'https://ambientcg.com/list?sort=popular', desc: '收录数千套免费商用 4K/8K PBR 材质球（含法线、粗糙度、置换贴图）的权威资源网' },
-    { id: 't3', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'Texturing.XYZ 影视级人物皮肤微观纹理', url: 'https://texturing.xyz/', desc: '全球角色艺术家必备的多通道超高清人类面部毛孔、皱纹置换贴图与虹膜扫描库' },
-    { id: 't4', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'Textures.com 全球老牌 3D 贴图鼻祖', url: 'https://www.textures.com/', desc: '涵盖建筑砖墙、自然岩石、风化金属、织物、污迹贴花与 PBR 扫描材质的百科全书' },
-    { id: 't5', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'HDRMaps 20K 超清 HDRI 与地面扫描库', url: 'https://hdrmaps.com/', desc: '面向高端汽车与建筑渲染的 20K 超高动态范围全景天空贴图与摄影测量地面纹理' },
-    { id: 't6', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'HDRI-Skies 全景天空贴图站 (含免费专区)', url: 'https://hdri-skies.com/free-hdris/', desc: '提供日出、黄昏、阴天等全天候自然光照 360° 高动态 EXR 天空环境球贴图资源' },
-    { id: 't7', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'Blockade Labs Skybox AI 全景图生成', url: 'https://www.blockadelabs.com/', desc: '通过文字提示词一键生成 360° 全景天空盒与游戏环境 HDRI 贴图' },
-    { id: 't8', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: '2G Academy 高精度次世代植物资产', url: 'https://www.2gacademy.net/product-page/lagerstroemia-indica', desc: '专业级紫薇树（Lagerstroemia Indica）等写实建筑景观植物模型与叶片材质包' },
-    { id: 't9', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'Pexels 免费高清无版权摄影图与视频', url: 'https://www.pexels.com/zh-cn/', desc: '免费可商用的高分辨率实拍风景、建筑、人物摄影参考图与 4K 空镜视频素材库' },
-    { id: 't10', space: 'cg', group: '🌍 PBR 材质与 HDRI', title: 'Storyblocks 免版税视听素材全集', url: 'https://www.storyblocks.com/', desc: '提供海量免版税 4K 实拍视频、绿幕抠像素材、背景音乐与音效的创作者素材库' },
-
-    // 🎬 媒体与设计 (34)
-    { id: 'b2', space: 'media', group: '🔥 社区与工作台', title: 'YouTube', url: 'https://youtube.com/', desc: '全球最大的视频与海外官方 CG、虚幻引擎教程平台', pinned: true },
-    { id: 'b1', space: 'media', group: '🔥 社区与工作台', title: '哔哩哔哩 Bilibili', url: 'https://www.bilibili.com/', desc: '国内核心弹幕视频与 CG / AI / UE5 教程学习社区', pinned: true },
-    { id: 'bm_1792978287239', space: 'media', group: '🔥 社区与工作台', title: 'X (Twitter) 全球社交与前沿资讯', url: 'https://x.com/', desc: '全球最具影响力的实时资讯、独立开发者、AI 前沿动态与 CG 艺术家社交平台', pinned: true },
-    { id: 'b4', space: 'media', group: '🔥 社区与工作台', title: 'ArtStation 殿堂级艺术社区', url: 'https://www.artstation.com/?sort_by=community', desc: '全球顶尖游戏美术、概念设计、UE5 场景与 VFX 作品展示社区', pinned: true },
-    { id: 'b3', space: 'media', group: '🔥 社区与工作台', title: 'Pinterest 视觉灵感库', url: 'https://www.pinterest.com/', desc: '全球设计师必备的视觉灵感、原画设定与美术参考瀑布流', pinned: true },
-    { id: 'b5', space: 'media', group: '🔥 社区与工作台', title: 'Figma 协同设计工作台', url: 'https://www.figma.com/files/team/1619233891932982176/recents-and-sharing/recently-viewed?fuid=1619233890512923355', desc: '在线 UI/UX 界面设计、原型制作与团队白板协作画布', pinned: true },
-    { id: 'b6', space: 'media', group: '🔥 社区与工作台', title: 'Discord 创作者交流频道', url: 'https://discord.com/channels/662267976984297473/952771221915840552', desc: 'Midjourney 生图、AI 开源项目与海外创作者实时交流社区' },
-    { id: 'b7', space: 'media', group: '🔥 社区与工作台', title: 'LINUX DO 技术与资源社区', url: 'https://linux.do/c/softwares/14', desc: '高质量中文 AI 前沿技术、开源工具、API 与软件资源论坛' },
-    { id: 'b10', space: 'media', group: '🔥 社区与工作台', title: '新片场 - LiangLiang 作品集', url: 'https://www.xinpianchang.com/u14004225', desc: 'LiangLiang 个人影视后期与 CG 视觉视频作品集展示主页' },
-    { id: 'b11', space: 'media', group: '🔥 社区与工作台', title: '我的任务 - ftrack 制片管线', url: 'https://f.hzpipeline.com/#itemId=home', desc: '团队内部 CG 制片管理、镜头审核与个人任务进度追踪平台', pinned: true },
-    { id: 's12', space: 'media', group: '✂️ 图像与文档工具', title: '刘明野的工具箱 (开发者与日常在线工具)', url: 'https://tools.liumingye.cn/', desc: '极简无广告的在线工具集合，涵盖无损音乐、二维码生成、编解码与图片处理' },
-    { id: 'bm_1792992786789', space: 'media', group: '✂️ 图像与文档工具', title: 'AnyToCopy 网页文字解除限制复制工具', url: 'https://www.anytocopy.com/', desc: '一键解除网页禁止复制、禁止右键与选择限制的在线文本提取与文档解析工具' },
-    { id: 'i1', space: 'media', group: '✂️ 图像与文档工具', title: 'Remove.bg 全自动 AI 抠图去背景', url: 'https://www.remove.bg/zh', desc: '5 秒内全自动识别人物、商品与动物边缘并生成干净透明底 PNG 的标杆抠图工具' },
-    { id: 'i2', space: 'media', group: '✂️ 图像与文档工具', title: 'Erase.bg 免费高清原图去背景工具', url: 'https://www.erase.bg/zh', desc: '支持高达 5000×5000px 分辨率原图免费 AI 抠图并保留完整边缘细节的在线神器' },
-    { id: 'i3', space: 'media', group: '✂️ 图像与文档工具', title: 'Squoosh (Google 纯本地无损图片压缩)', url: 'https://squoosh.app/', desc: 'Google Chrome 团队出品，纯浏览器本地实时对比画质并转换 WebP/AVIF/PNG 的压缩工具' },
-    { id: 'i5', space: 'media', group: '✂️ 图像与文档工具', title: 'Docsmall 在线 GIF 动图与 PDF 极速压缩', url: 'https://docsmall.com/gif-compress', desc: '界面极简无广告的国内良心工具，支持批量大幅缩减 GIF 动图、JPG 图片与 PDF 体积' },
-    { id: 'i6', space: 'media', group: '✂️ 图像与文档工具', title: 'Ezgif 全功能 GIF 动图尺寸裁剪与编辑', url: 'https://ezgif.com/resize', desc: '老牌全能 GIF 工具箱，支持修改动图尺寸、视频转 GIF、抽帧变速、加字幕与逐帧优化' },
-    { id: 'i13', space: 'media', group: '✂️ 图像与文档工具', title: 'LZL 在线批量圆角图片生成器', url: 'https://lzltool.com/batch-img-radius', desc: '支持一次性拖入多张图片，自定义四角圆角像素或百分比并批量打包下载透明圆角图' },
-    { id: 'i14', space: 'media', group: '✂️ 图像与文档工具', title: 'UUTool 在线图片尺寸像素修改工具', url: 'https://uutool.cn/img-resize/', desc: '按固定宽高像素或等比例快速缩放图片尺寸，纯前端处理保护图片隐私' },
-    { id: 'i15', space: 'media', group: '✂️ 图像与文档工具', title: 'iLoveIMG 免费在线批量压缩 JPG/PNG', url: 'https://www.iloveimg.com/zh-cn/compress-image/compress-jpg', desc: '保持高画质的前提下批量极限压缩数十张 JPG、PNG 或 GIF 图像文件体积' },
-    { id: 'i16', space: 'media', group: '✂️ 图像与文档工具', title: 'SafeResize 按指定 KB 大小精准调整图片', url: 'https://saferesize.com/', desc: '专门解决报名、签证上传限制：输入目标 KB 数值即可自动把证件照或 PDF 压缩至合规大小' },
-    { id: 'i17', space: 'media', group: '✂️ 图像与文档工具', title: 'Smallpdf 在线 PDF 转换与编辑全能王', url: 'https://smallpdf.com/cn', desc: '一站式解决 PDF 转 Word/PPT/JPG、PDF 合并拆分、压缩瘦身与电子签名' },
-    { id: 'i19', space: 'media', group: '✂️ 图像与文档工具', title: 'Tiqu.cc 全网社媒视频与高清原图提取器', url: 'https://tiqu.cc/', desc: '粘贴链接即可免水印提取下载 YouTube、TikTok、Twitter(X)、Instagram 高清视频与图片' },
-    { id: 'i8', space: 'media', group: '🎨 字体、素材与音乐', title: 'CleanPNG 百万级免费透明 PNG 免抠素材', url: 'https://www.cleanpng.com/', desc: '无需登录即可无限免费下载数百万张高清透明背景 PNG 装饰元素与贴图素材' },
-    { id: 'i12', space: 'media', group: '🎨 字体、素材与音乐', title: 'Gradient Pro 极致流体渐变背景工坊', url: 'https://bg.diyun.site/', desc: '一键生成大师级柔和极光、流体弥散渐变色背景，支持导出 CSS 代码与 4K 壁纸图' },
-    { id: 'i20', space: 'media', group: '🎨 字体、素材与音乐', title: 'BeFonts 设计师精选免费西文字体库', url: 'https://befonts.com/', desc: '高质量现代无衬线、优雅衬线、赛博科幻与海报标题英文字体免费下载平台' },
-    { id: 'i21', space: 'media', group: '🎨 字体、素材与音乐', title: 'FontRiver 免费英文字体与 Dingbats 符号库', url: 'https://www.fontriver.com/', desc: '按风格细致分类的免费可下载英文字体与图形化 Dingbats 装饰符号字库' },
-    { id: 'i23', space: 'media', group: '🎨 字体、素材与音乐', title: 'VAU 艺术字体与海报标题特效素材', url: 'https://vaufonts.com/', desc: '面向视觉设计与游戏宣发的个性艺术字体、金属质感字效与排版素材库' },
-    { id: 'i24', space: 'media', group: '🎨 字体、素材与音乐', title: 'Canva 可画 Logo 视觉模板中心', url: 'https://www.canva.com/templates/?query=logo', desc: '数千款现成可在线拖拽编辑的品牌 Logo、个人徽标与社交媒体头像设计模板' },
-    { id: 'i25', space: 'media', group: '🎨 字体、素材与音乐', title: 'UUGai 免费中文 Logo 在线一键制作', url: 'https://www.uugai.com/', desc: '免注册免付费，输入品牌名称即可在 1 分钟内自动排版生成多套中英文标志方案' },
-    { id: 'i26', space: 'media', group: '🎨 字体、素材与音乐', title: '甲方叭叭 视觉与三维设计师专属导航', url: 'https://jiafangbb.com/', desc: '聚合国内外优质配色、样机、字体、摄影图库与三维渲染资源的精选设计导航' },
-    { id: 's1', space: 'media', group: '🎨 字体、素材与音乐', title: 'NewCGer 新CG儿 (免费 AE 模板与素材)', url: 'https://www.newcger.com/', desc: '国内老牌良心站点，免注册免费高速下载海量 AE 工程模板、实拍视频与音频素材' },
-    { id: 's16', space: 'media', group: '🎨 字体、素材与音乐', title: 'MyFreeMP3 全网无损音乐在线搜索与下载', url: 'https://tools.liumingye.cn/music/#/', desc: '支持在线免费试听并下载 FLAC / MP3 高音质音乐、影视配乐与歌词封面' },
-    { id: 's17', space: 'media', group: '🎨 字体、素材与音乐', title: '熊猫无损音乐官网 (WAV/FLAC/DSD音乐库)', url: 'https://www.xmwsyy.com/', desc: '发烧友与剪辑师常用的高品质 WAV、FLAC 无损音乐专辑与经典曲库免费下载网' },
-
-    // 📦 软件与运维 (53)
-    { id: 'win_1', space: 'software', group: '🧰 装机必备软件', title: 'Chrome 浏览器 (离线安装包)', url: 'https://www.iplaysoft.com/tools/chrome/?', desc: 'Google 出品的旗舰级网页浏览器，支持丰富开发者扩展与高速渲染 (网络通信)' },
-    { id: 'win_2', space: 'software', group: '🧰 装机必备软件', title: 'Clash for Windows 客户端', url: 'https://dw1.166cc.top/clash_0.20.37/Clash.for.Windows.Setup.0.20.37.exe', desc: '经典的 Windows 端图形化规则代理与网络加速 VPN 客户端工具' },
-    { id: 'win_3', space: 'software', group: '🧰 装机必备软件', title: 'ToDesk 远程控制软件', url: 'https://www.todesk.com/download.html', desc: '低延迟高帧率跨平台远程桌面控制软件，支持文件直传与多屏办公 (网络通信)' },
-    { id: 'win_4', space: 'software', group: '🧰 装机必备软件', title: 'Internet Download Manager (IDM)', url: 'https://tmioe.com/662.html', desc: 'Windows 平台最强的多线程下载加速神器，支持网页音视频自动嗅探抓取' },
-    { id: 'win_5', space: 'software', group: '🧰 装机必备软件', title: 'Everything 本地文件极速搜索', url: 'https://www.voidtools.com/zh-cn/', desc: '基于 NTFS 索引的毫秒级本地文件名快速查找神器，装机必备效率工具' },
-    { id: 'win_6', space: 'software', group: '🧰 装机必备软件', title: 'Bandizip 专业解压缩软件', url: 'https://www.bandisoft.com/bandizip/', desc: '清爽快速的多格式专业压缩与解压软件，支持压缩包内图片预览与密码管理' },
-    { id: 'win_7', space: 'software', group: '🧰 装机必备软件', title: 'DownKyi 哔哩下载姬', url: 'https://github.com/leiurayer/downkyi', desc: '开源免费的 B站 (Bilibili) 视频高清下载工具，支持批量下载 4K/8K 视频与音视频分离' },
-    { id: 'win_8', space: 'software', group: '🧰 装机必备软件', title: 'Honeyview 极速图片查看器', url: 'https://www.bandisoft.com/honeyview/', desc: '轻量无广告的快速图片查看器，支持直接免解压浏览压缩包内图像与 EXIF 信息' },
-    { id: 'win_9', space: 'software', group: '🧰 装机必备软件', title: 'GameTextureViewer 贴图序列查看器', url: 'https://jangafx.com/software/gametextureviewer/', desc: 'JangaFX 出品的游戏特效师专用图片序列帧与通道贴图实时查看工具 (图像音频)' },
-    { id: 'win_10', space: 'software', group: '🧰 装机必备软件', title: 'PotPlayer 全能视频播放器', url: 'https://potplayer.daum.net/?lang=zh_CN', desc: 'Windows 平台最强大的本地视频播放软件，支持硬件解码、逐帧播放与全格式字幕' },
-    { id: 'win_11', space: 'software', group: '🧰 装机必备软件', title: 'PureRef 参考图与情绪板软件', url: 'https://www.pureref.com/', desc: 'CG 艺术家与原画师必备的无限画布灵感收集、参考图置顶贴图与情绪板制作工具' },
-    { id: 'win_12', space: 'software', group: '🧰 装机必备软件', title: 'Snipaste 截图与桌面贴图神器', url: 'https://www.snipaste.com/', desc: '强大的精准像素级截图、取色标注与屏幕置顶贴图效率工具' },
-    { id: 'win_13', space: 'software', group: '🧰 装机必备软件', title: 'TranslucentTB 任务栏透明美化', url: 'https://github.com/TranslucentTB/TranslucentTB', desc: '开源轻量的 Windows 10/11 任务栏半透明、毛玻璃与全透明视觉美化工具' },
-    { id: 'win_14', space: 'software', group: '🧰 装机必备软件', title: 'iTop Easy Desktop 桌面整理工具', url: 'https://www.ghxi.com/itopeasydesktop.html', desc: '清爽好用的 Windows 桌面图标分区收纳、文件夹映射与自动整理工具' },
-    { id: 'win_15', space: 'software', group: '🧰 装机必备软件', title: 'Rolan 桌面快速启动工具', url: 'https://getrolan.com/', desc: '极简轻量的 Windows 桌面快捷启动面板，一键归类启动常用软件与工程目录' },
-    { id: 'win_16', space: 'software', group: '🧰 装机必备软件', title: 'Tampermonkey 篡改猴浏览器扩展', url: 'https://www.tampermonkey.net/?locale=zh', desc: '全球最流行的浏览器用户脚本管理器，支持安装网盘直链、去广告等自动化脚本' },
-    { id: 'win_17', space: 'software', group: '🧰 装机必备软件', title: 'PixPin 全能截图/贴图/OCR工具', url: 'https://pixpinapp.com/', desc: '集区域截图、屏幕贴图、长截图拼接、GIF 动图录制、离线文字识别与标注于一体的神器' },
-    { id: 'win_18', space: 'software', group: '🧰 装机必备软件', title: 'Geek Uninstaller 软件强力卸载工具', url: 'https://geekuninstaller.com/', desc: '单文件便携版软件卸载神器，彻底扫描并清除软件残留文件与注册表垃圾' },
-    { id: 'win_19', space: 'software', group: '🧰 装机必备软件', title: 'Billfish 素材管理与情绪板工具', url: 'https://www.billfish.cn/', desc: '专为设计师打造的本地多格式设计素材管理、灵感网页采集与颜色检索软件' },
-    { id: 'win_20', space: 'software', group: '🧰 装机必备软件', title: 'PDF24 Toolbox 免费全能 PDF 工具箱', url: 'https://tools.pdf24.org/en/', desc: '完全免费无限制的桌面与在线 PDF 工具箱，涵盖合并拆分、压缩、转换与 OCR' },
-    { id: 'win_21', space: 'software', group: '🧰 装机必备软件', title: 'VoukoderPro Designer (AE/PR 解码插件)', url: 'https://www.voukoder.org/', desc: '专业的 AE / Premiere / 达芬奇硬件加速直出 MP4 (H.264/H.265/ProRes) 编码渲染插件' },
-    { id: 'win_22', space: 'software', group: '🧰 装机必备软件', title: 'OBS Studio 开源高清录屏与推流', url: 'https://obsproject.com/', desc: '全球标杆级开源免费高清屏幕录制、多机位场景切换与直播推流软件' },
-    { id: 'win_23', space: 'software', group: '🧰 装机必备软件', title: 'Chaos Player 专业 EXR 序列帧播放器', url: 'https://www.chaos.com/player?srsltid=AfmBOorcSDcYLikjEqd5_EQsXMT-Iu-KNfYOEpS5NCYq-g0cFIEF5vGA', desc: 'Chaos 官方出品的影视三维后期高动态范围 EXR 多通道序列帧高速回放与合成检视工具' },
-    { id: 'win_24', space: 'software', group: '🧰 装机必备软件', title: '纷得 Found 2 本地文件快速查找', url: 'https://www.aalab.com.cn/', desc: '高颜值国产快速文件检索与预览效率工具，支持快捷键秒搜全盘工程资产' },
-    { id: 'win_25', space: 'software', group: '🧰 装机必备软件', title: 'AnyDesk 跨平台轻量远程桌面', url: 'https://anydesk.com/en', desc: '体积小巧、高安全性且响应极快的国际主流跨平台远程桌面连接软件' },
-    { id: 'win_26', space: 'software', group: '🧰 装机必备软件', title: 'Dr. Folder 文件夹彩色图标替换工具', url: 'https://www.ghxi.com/drfolder.html', desc: '一键搜索并批量替换 Windows 文件夹颜色与自定义分类图标的视觉管理工具' },
-    { id: 'win_27', space: 'software', group: '🧰 装机必备软件', title: 'Notepad++ 轻量源代码文本编辑器', url: 'https://notepad-plus-plus.org/', desc: '装机必备的开源高速文本与源代码编辑器，支持百种语法高亮、正则替换与大文件秒开' },
-    { id: 'win_28', space: 'software', group: '🧰 装机必备软件', title: 'Upscayl 开源本地 AI 图片无损放大', url: 'https://upscayl.org/download', desc: '开源免费的桌面端本地 GPU 加速 AI 图像超分辨率无损放大软件' },
-    { id: 's5', space: 'software', group: '💻 绿色软件与脚本', title: '腾龙工作室 (TenlonStudio) 软件资源库', url: 'https://www.tenlonstudio.com/', desc: '长期稳定维护的 Adobe 全家桶、三维设计软件、系统镜像与后期插件分享论坛' },
-    { id: 's6', space: 'software', group: '💻 绿色软件与脚本', title: '果核剥壳 精品绿色便携软件分享', url: 'https://www.ghxi.com/', desc: '国内极具口碑的绿色软件站，专注分享免安装便携版、去广告纯净版 Windows/安卓工具' },
-    { id: 's7', space: 'software', group: '💻 绿色软件与脚本', title: 'LRepacks 俄罗斯大神直装便携版软件库', url: 'https://lrepacks.net/', desc: '全球知名的俄罗斯 Repack 站点，提供海量免激活一键直装的专业设计、音视频与系统软件' },
-    { id: 's8', space: 'software', group: '💻 绿色软件与脚本', title: 'ZAPRO · 杂铺 精选生产力软件库', url: 'https://tmioe.com/', desc: '高颜值纯净软件博客，精选 Windows 与 macOS 平台设计、剪辑、办公及效率破解软件' },
-    { id: 's10', space: 'software', group: '💻 绿色软件与脚本', title: 'APP喵 (阿喵软件与互联网黑科技分享)', url: 'https://www.appmiu.com/', desc: '每日挖掘全网有趣好用的开源小工具、独立开发 App、网站资源与电脑软件' },
-    { id: 's11', space: 'software', group: '💻 绿色软件与脚本', title: '油小猴 实用油猴脚本与黑科技工具箱', url: 'https://www.youxiaohou.com/', desc: '聚合网盘满速直链解析、浏览器扩展插件、Tampermonkey 脚本与宝藏小网站合集' },
-    { id: 's13', space: 'software', group: '💻 绿色软件与脚本', title: '帮你下 国外网盘高速中转代下服务', url: 'https://bangnixia.com/fetch', desc: '解决 CG 资源下载痛点：支持将 Rapidgator、Katfile、Nitroflare 等海外慢速网盘秒转国内高速直链' },
-    { id: 's15', space: 'software', group: '💻 绿色软件与脚本', title: 'LANDrop 跨平台局域网无损极速快传', url: 'https://landrop.app/', desc: '支持 Windows / Mac / iOS / Android 局域网内不耗流量、跑满千兆带宽互传大文件与视频素材' },
-    { id: 'n1', space: 'software', group: '🌐 建站与云服务', title: 'Vercel 个人前端项目部署控制台', url: 'https://vercel.com/zhaoliangs-projects-41437e85', desc: '管理个人作品集网站、NotionNext 博客与前端应用的自动化 CI/CD 云端部署面板' },
-    { id: 'n2', space: 'software', group: '🌐 建站与云服务', title: 'Cloudflare 域名 DNS 解析与 CDN 控制台', url: 'https://dash.cloudflare.com/5f703a6765e76b5b2aca3c93564606a3/zhaoliangartists.top', desc: 'zhaoliangartists.top 专属域名 DNS 记录配置、全球 CDN 缓存加速与 SSL 安全防护后台' },
-    { id: 'n3', space: 'software', group: '🌐 建站与云服务', title: 'NotionNext 个人博客源码仓库 (GitHub)', url: 'https://github.com/notionnext-org/NotionNext', desc: '基于 Notion 驱动的个人作品集与技术博客网站源码、主题配置及部署说明仓库' },
-    { id: 'n4', space: 'software', group: '🌐 建站与云服务', title: 'Namesilo 国际域名注册与管理后台', url: 'https://www.namesilo.com/account/', desc: '管理个人顶级域名续费、隐私保护与自定义 NameServer 服务器指向配置' },
-    { id: 'n5', space: 'software', group: '🌐 建站与云服务', title: '七牛云 对象存储 (Kodo) 控制台', url: 'https://portal.qiniu.com/home', desc: '用于托管个人网站高清大图、三维展示资源与静态文件的国内 CDN 云存储平台' },
-    { id: 'n6', space: 'software', group: '🌐 建站与云服务', title: '多吉云 视频云点播与无广告流媒体托管', url: 'https://console.dogecloud.com/vod/upload', desc: '专为个人作品集网站提供的高清 VFX 作品视频上传、转码加密与极速内嵌播放服务' },
-    { id: 'n7', space: 'software', group: '🌐 建站与云服务', title: 'Google PageSpeed Insights 网站性能测速', url: 'https://pagespeed.web.dev/', desc: 'Google 官方网页加载速度、Core Web Vitals 核心指标与移动端/桌面端 SEO 优化诊断工具' },
-    { id: 'n9', space: 'software', group: '🌐 建站与云服务', title: '路过图床 (ImgSE) 免注册外链图床', url: 'https://imgse.com/', desc: '老牌高可用全球 CDN 图床，适合博客文章插图、论坛发帖与作品截图外链托管' },
-    { id: 'n10', space: 'software', group: '🌐 建站与云服务', title: 'FlipHTML5 在线 PDF 3D 翻页电子画册托管', url: 'https://fliphtml5.com/dashboard/publications?lang=zh_cn', desc: '将 PDF 作品集或文档一键转换为可嵌入个人网页的交互式 3D 翻页电子书' },
-    { id: 'n11', space: 'software', group: '🌐 建站与云服务', title: 'Flaticon 全球最大扁平化矢量图标库', url: 'https://www.flaticon.com/search?word=cloud', desc: '提供数百万枚网页 UI、建站装饰与演示文稿专用的 PNG / SVG 矢量图标搜索下载' },
-    { id: 'n12', space: 'software', group: '🌐 建站与云服务', title: 'Babiato 全球建站主题与数字资源论坛', url: 'https://babia.to/', desc: '海外极客社区，免费分享高级 WordPress 主题、插件、UI 套件与建站源码资源' },
-    { id: 'n13', space: 'software', group: '🌐 建站与云服务', title: 'WordPress 资源海 (汉化主题与插件库)', url: 'https://wpzyh.com/', desc: '专注 WordPress 中文汉化版商业主题、独立站插件与建站排错教程的资源平台' },
-    { id: 'n15', space: 'software', group: '🌐 建站与云服务', title: 'Fiat24 瑞士合规多币种万事达卡后台', url: 'https://www.fiat24.com/login', desc: '瑞士银行监管的多币种账户与海外消费万事达卡登录管理中心' },
-    { id: 'n16', space: 'software', group: '🚀 网络加速专线', title: 'iKuuu VPN 海外加速用户中心', url: 'https://ikuuu.co/user', desc: '常用海外网络加速节点状态查看、流量签到与 Clash 订阅链接管理面板' },
-    { id: 'n17', space: 'software', group: '🚀 网络加速专线', title: '狗狗加速 (dg5.org) 高速专线仪表盘', url: 'https://www.dg5.org/#/dashboard', desc: '低延迟海外网络加速专线控制台，适合流媒体观看、AI 生图与外网资料检索' },
-    { id: 'bm_1792994093844', space: 'software', group: '🚀 网络加速专线', title: 'MMYUN (MMcloud) 云端加速节点中心', url: 'https://mmxz.meimei1314.xyz/user', desc: '多地区高速海外网络加速节点状态查看、流量订阅管理与 Clash 客户端配置导入面板' },
-    { id: 'bm_1792994164903', space: 'software', group: '🚀 网络加速专线', title: '赔钱机场 低延迟高速专线仪表盘', url: 'https://dash.xn--cp3a08l.com/dashboard', desc: '高性价比多线路海外网络加速节点监控、流量套餐管理与一键导入 Clash 订阅后台' }
-  ];
-
-  // ==================== 4. Chrome 扩展存储适配层（chrome.storage.local + localStorage 兜底） ====================
+  // ==================== 3. Chrome 扩展存储适配层 ====================
   const IS_EXTENSION = typeof chrome !== 'undefined' && !!(chrome.storage && chrome.storage.local);
+  const DEFAULT_WEATHER_CITY = '39.9042,116.4074,北京';
   const KEYS = {
     bookmarks: 'ws_v10_bookmarks',
     spaceGroups: 'ws_v10_space_groups',
@@ -250,14 +80,17 @@
     theme: 'ws_v10_theme',
     accent: 'ws_v10_accent',
     rightPanel: 'ws_v10_right_panel',
-    city: 'ws_v10_weather_city'
+    city: 'ws_v10_weather_city_v2',
+    weatherCache: 'ws_v10_weather_cache',
+    ghSync: 'ws_v10_gh_sync',
+    updatedAt: 'ws_v10_updated_at',
+    pendingSaves: 'ws_v11_pending_saves',
+    syncConflict: 'ws_v11_sync_conflict'
   };
 
   async function storeGetAll(keyList) {
     if (IS_EXTENSION) {
-      return new Promise(resolve => {
-        chrome.storage.local.get(keyList, res => resolve(res || {}));
-      });
+      return new Promise(resolve => chrome.storage.local.get(keyList, res => resolve(res || {})));
     }
     const out = {};
     keyList.forEach(k => {
@@ -282,10 +115,10 @@
     }
   }
 
-  // ==================== 5. 搜索引擎与全局运行时状态 ====================
+  // ==================== 4. 搜索引擎、拼音首字母引擎与运行时状态 ====================
   const ENGINE_ORDER = ['local', 'google', 'bing', 'github', 'bilibili', 'taobao', 'jd'];
   const SEARCH_ENGINES = {
-    local:    { name: '站内书签', btnText: '筛选', placeholder: '输入关键词全站检索（按 / 或 Ctrl+K 聚焦 · Tab 切引擎 · ↑↓+Enter 直达）...', url: '' },
+    local:    { name: '站内书签', btnText: '筛选', placeholder: '输入关键词或拼音首字母检索（按 / 聚焦 · Tab 切引擎 · 1-6 切空间 · Ctrl+点击后台打开）...', url: '' },
     google:   { name: 'Google',   btnText: 'Google 搜索', placeholder: '在 Google 中搜索全球技术文档、UE5 资料与 CG 教程，按回车直达...', url: 'https://www.google.com/search?q=' },
     bing:     { name: 'Bing',     btnText: '必应搜索', placeholder: '在微软 Bing 中搜索全球网页与技术资料，按回车直达...', url: 'https://cn.bing.com/search?q=' },
     github:   { name: 'GitHub',   btnText: '搜开源项目', placeholder: '在 GitHub 检索开源项目、ComfyUI 自定义节点与实用脚本...', url: 'https://github.com/search?q=' },
@@ -301,11 +134,46 @@
     software: 'from-emerald-500 to-teal-600'
   };
 
+  const PY_BOUNDARIES = [
+    ['a', '阿'], ['b', '芭'], ['c', '擦'], ['d', '搭'], ['e', '蛾'],
+    ['f', '发'], ['g', '噶'], ['h', '哈'], ['j', '击'], ['k', '喀'],
+    ['l', '垃'], ['m', '妈'], ['n', '拿'], ['o', '哦'], ['p', '啪'],
+    ['q', '期'], ['r', '然'], ['s', '撒'], ['t', '塌'], ['w', '挖'],
+    ['x', '昔'], ['y', '压'], ['z', '匝']
+  ];
+  const zhCollator = typeof Intl !== 'undefined' ? new Intl.Collator('zh-CN') : null;
+  const pinyinCache = new Map();
+
+  function getPinyinInitials(str) {
+    if (!str || !zhCollator) return '';
+    if (pinyinCache.has(str)) return pinyinCache.get(str);
+    let out = '';
+    for (const ch of str) {
+      if (/[a-zA-Z0-9]/.test(ch)) {
+        out += ch.toLowerCase();
+      } else if (/[\u4e00-\u9fa5]/.test(ch)) {
+        let letter = '';
+        for (let i = PY_BOUNDARIES.length - 1; i >= 0; i--) {
+          if (zhCollator.compare(ch, PY_BOUNDARIES[i][1]) >= 0) {
+            letter = PY_BOUNDARIES[i][0];
+            break;
+          }
+        }
+        out += letter;
+      }
+    }
+    if (pinyinCache.size > 800) pinyinCache.clear();
+    pinyinCache.set(str, out);
+    return out;
+  }
+
   let bookmarks = [];
   let spaceGroups = { ai: [], cg: [], media: [], software: [] };
   let collapsedGroups = {};
   let todos = [];
   let recentVisits = [];
+  let weatherCacheMap = {};
+  let lastWeatherArgs = { lat: 39.9042, lon: 116.4074, cityName: '北京' };
   let currentNoteTab = 'memo';
   let currentSpace = 'home';
   let currentGroup = 'all';
@@ -317,13 +185,24 @@
   let draggedGroupInfo = null;
   let contextMenuBmId = null;
   let kbdSelectedIndex = -1;
+  let currentToolType = '';
+  let lastDeletedUndo = null;
+  let linkCheckAbortController = null;
+
+  let ghSyncConfig = { token: '', gistId: '', autoSync: true, lastSyncAt: 0, lastRemoteUpdatedAt: 0 };
+  let localUpdatedAt = 0;
+  let autoSyncTimer = null;
+  let configSaveTimer = null;
+  let isSyncing = false;
+  let pendingPushAfterSync = false;
+  let lastWakePullAt = 0;
+  let isInternalStorageWrite = false;
 
   const offlineIconMapByUrl = new Map();
   const offlineIconMapByHost = new Map();
   const hdUpgradedCache = new Map();
   const spotlightBoundSet = new WeakSet();
 
-  // 全量 8 大工具防误关会话缓存（已补齐图像圆角、格式转换、吸管取色参数）
   const toolSessionCache = {
     json: '',
     text: '',
@@ -348,7 +227,7 @@
   let convSourceImg = null;
   let convOriginalName = 'converted';
 
-  // ==================== 6. 初始化生命周期 ====================
+  // ==================== 5. 初始化生命周期 ====================
   async function initApp() {
     const badgeEl = document.getElementById('storageStatusBadge');
     if (badgeEl) {
@@ -358,31 +237,17 @@
     buildOfflineIconMaps();
     const saved = await storeGetAll(Object.values(KEYS));
 
-    // 主题与强调色
-    const htmlEl = document.documentElement;
-    const themeBtn = document.getElementById('themeBtn');
-    if (saved[KEYS.theme] === 'light') {
-      htmlEl.classList.remove('dark');
-      if (themeBtn) themeBtn.textContent = '🌙';
-    } else {
-      htmlEl.classList.add('dark');
-      if (themeBtn) themeBtn.textContent = '☀️';
-    }
-    setAccentColor(saved[KEYS.accent] || 'indigo', false);
-
-    // 右侧面板折叠状态
+    applyThemeUI(saved[KEYS.theme] === 'light' ? 'light' : 'dark');
+    setAccentColor(saved[KEYS.accent] || 'indigo', false, true);
     isRightPanelCollapsed = saved[KEYS.rightPanel] === 'collapsed';
     applyRightPanelUI();
-
-    // 品牌 Logo
     initBrandLogo(saved[KEYS.customLogo] || '');
 
-    // 书签、空间分组与分组折叠状态
     if (Array.isArray(saved[KEYS.bookmarks]) && saved[KEYS.bookmarks].length > 0 && saved[KEYS.bookmarks][0].space) {
       bookmarks = saved[KEYS.bookmarks];
     } else {
       bookmarks = JSON.parse(JSON.stringify(INITIAL_BOOKMARKS));
-      storeSet({ [KEYS.bookmarks]: bookmarks });
+      if (bookmarks.length > 0) storeSet({ [KEYS.bookmarks]: bookmarks });
     }
 
     if (saved[KEYS.spaceGroups] && typeof saved[KEYS.spaceGroups] === 'object') {
@@ -392,13 +257,34 @@
       storeSet({ [KEYS.spaceGroups]: spaceGroups });
     }
 
+    if (Array.isArray(saved[KEYS.pendingSaves]) && saved[KEYS.pendingSaves].length > 0) {
+      let merged = 0;
+      saved[KEYS.pendingSaves].forEach(item => {
+        if (!bookmarks.some(b => canonicalUrlKey(b.url) === canonicalUrlKey(item.url))) {
+          bookmarks.unshift(item);
+          if (!spaceGroups[item.space]) spaceGroups[item.space] = [];
+          if (!spaceGroups[item.space].includes(item.group)) spaceGroups[item.space].push(item.group);
+          merged++;
+        }
+      });
+      storeSet({ [KEYS.pendingSaves]: [] });
+      if (merged > 0) saveCoreState(false);
+    }
+
     collapsedGroups = (saved[KEYS.collapsed] && typeof saved[KEYS.collapsed] === 'object') ? saved[KEYS.collapsed] : {};
     recentVisits = Array.isArray(saved[KEYS.recentVisits]) ? saved[KEYS.recentVisits] : [];
     todos = Array.isArray(saved[KEYS.todos]) ? saved[KEYS.todos] : [];
+    weatherCacheMap = (saved[KEYS.weatherCache] && typeof saved[KEYS.weatherCache] === 'object') ? saved[KEYS.weatherCache] : {};
 
-    hydrateOfflineBase64Icons();
+    if (saved[KEYS.ghSync] && typeof saved[KEYS.ghSync] === 'object') {
+      ghSyncConfig = { token: '', gistId: '', autoSync: true, lastSyncAt: 0, lastRemoteUpdatedAt: 0, ...saved[KEYS.ghSync] };
+    }
+    localUpdatedAt = typeof saved[KEYS.updatedAt] === 'number' ? saved[KEYS.updatedAt] : 0;
 
-    // 便签与待办初始化
+    if (saved[KEYS.syncConflict]) showSyncConflictBanner(saved[KEYS.syncConflict]);
+
+    hydrateOfflineBase64Icons(true);
+
     const memoArea = document.getElementById('quickMemoArea');
     const savedMemo = typeof saved[KEYS.memo] === 'string' ? saved[KEYS.memo] : '';
     if (memoArea) memoArea.value = savedMemo;
@@ -406,16 +292,70 @@
     renderTodoList();
     switchNoteTab(saved[KEYS.noteTab] || 'memo', false);
 
-    // 绑定所有静态与动态委托事件（纯 MV3 合规）
     bindAllEvents();
+    bindExtensionStorageWatcher();
 
-    // 首次渲染与仪表盘启动
+    const urlQ = new URLSearchParams(window.location.search).get('q');
+    if (urlQ && urlQ.trim()) {
+      const sInput = document.getElementById('searchInput');
+      if (sInput) sInput.value = urlQ.trim();
+      searchQuery = urlQ.trim();
+      kbdSelectedIndex = 0;
+      document.getElementById('clearSearchBtn')?.classList.remove('hidden');
+    }
+
     switchSpace('home', 'all');
     initClockAndCNY();
-    initWeather(saved[KEYS.city] || 'auto');
+    initWeather(saved[KEYS.city] || DEFAULT_WEATHER_CITY);
+    updateSyncBadgeUI();
+    autoSyncOnStartup();
+
+    if (bookmarks.length === 0 && INITIAL_BOOKMARKS.length === 0) {
+      showToast('⚠️ 未检测到 js/default-bookmarks.js，请确认文件位于 js/ 目录并在 index.html 中引入', { duration: 6000 });
+    }
   }
 
-  // ==================== 7. 品牌 Logo、主题、强调色与右栏折叠 ====================
+  function bindExtensionStorageWatcher() {
+    if (!IS_EXTENSION || !chrome.storage.onChanged) return;
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'local' || isInternalStorageWrite) return;
+      let needRender = false;
+      if (changes[KEYS.bookmarks]?.newValue) {
+        bookmarks = changes[KEYS.bookmarks].newValue;
+        hydrateOfflineBase64Icons(true);
+        needRender = true;
+      }
+      if (changes[KEYS.spaceGroups]?.newValue) {
+        spaceGroups = { ...JSON.parse(JSON.stringify(INITIAL_SPACE_GROUPS)), ...changes[KEYS.spaceGroups].newValue };
+        needRender = true;
+      }
+      if (changes[KEYS.ghSync]?.newValue) {
+        ghSyncConfig = { token: '', gistId: '', autoSync: true, lastSyncAt: 0, lastRemoteUpdatedAt: 0, ...changes[KEYS.ghSync].newValue };
+        updateSyncBadgeUI();
+      }
+      if (changes[KEYS.updatedAt]?.newValue) {
+        localUpdatedAt = changes[KEYS.updatedAt].newValue;
+      }
+      if (changes[KEYS.syncConflict]) {
+        const cf = changes[KEYS.syncConflict].newValue;
+        if (cf) showSyncConflictBanner(cf);
+        else hideSyncConflictBanner();
+      }
+      if (needRender) {
+        renderSpaceDock();
+        renderSidebarGroups();
+        renderMainContent();
+      }
+    });
+  }
+
+  function writeStoreInternal(obj) {
+    isInternalStorageWrite = true;
+    storeSet(obj);
+    setTimeout(() => { isInternalStorageWrite = false; }, 120);
+  }
+
+  // ==================== 6. 品牌 Logo、主题、强调色与右栏折叠 ====================
   const LOGO_CANDIDATES = ['logo.png', 'logo.svg', 'logo.webp', 'logo.jpg'];
   let logoCandidateIdx = 0;
 
@@ -454,33 +394,49 @@
     const reader = new FileReader();
     reader.onload = ev => {
       const base64 = ev.target.result;
-      storeSet({ [KEYS.customLogo]: base64 });
+      writeStoreInternal({ [KEYS.customLogo]: base64 });
       const img = document.getElementById('brandLogoImg');
       const fav = document.getElementById('pageFavicon');
       if (img) img.src = base64;
       if (fav) fav.href = base64;
-      showToast('🎉 左上角品牌图标已更换并自动保存');
+      markLocalChangeAndSync();
+      showToast('🎉 左上角品牌图标已更换并同步保存');
     };
     reader.readAsDataURL(file);
   }
 
+  function applyThemeUI(mode) {
+    const htmlEl = document.documentElement;
+    const btn = document.getElementById('themeBtn');
+    if (mode === 'light') {
+      htmlEl.classList.remove('dark');
+      if (btn) btn.textContent = '🌙';
+    } else {
+      htmlEl.classList.add('dark');
+      if (btn) btn.textContent = '☀️';
+    }
+  }
+
   function toggleTheme() {
     const isDark = document.documentElement.classList.toggle('dark');
-    storeSet({ [KEYS.theme]: isDark ? 'dark' : 'light' });
+    const mode = isDark ? 'dark' : 'light';
+    writeStoreInternal({ [KEYS.theme]: mode });
     const btn = document.getElementById('themeBtn');
     if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+    markLocalChangeAndSync();
     showToast(isDark ? '🌙 已切换至深邃极光暗色模式' : '☀️ 已切换至通透浅色模式');
   }
 
-  function setAccentColor(colorName, notify = true) {
+  function setAccentColor(colorName, notify = true, skipSync = false) {
     document.body.setAttribute('data-accent', colorName);
-    storeSet({ [KEYS.accent]: colorName });
+    writeStoreInternal({ [KEYS.accent]: colorName });
     document.querySelectorAll('.accent-dot').forEach(dot => {
       const active = dot.getAttribute('data-color') === colorName;
       dot.classList.toggle('ring-2', active);
       dot.classList.toggle('scale-110', active);
     });
     closeAccentPopover();
+    if (!skipSync) markLocalChangeAndSync();
     const names = { indigo: '极光靛蓝', violet: '赛博紫罗兰', cyan: '深海青碧', emerald: '翡翠森绿', rose: '落日绯红' };
     if (notify) showToast(`🎨 主题强调色已切换为：${names[colorName] || colorName}`);
   }
@@ -495,9 +451,10 @@
 
   function toggleRightPanel() {
     isRightPanelCollapsed = !isRightPanelCollapsed;
-    storeSet({ [KEYS.rightPanel]: isRightPanelCollapsed ? 'collapsed' : 'expanded' });
+    writeStoreInternal({ [KEYS.rightPanel]: isRightPanelCollapsed ? 'collapsed' : 'expanded' });
     applyRightPanelUI();
     renderMainContent();
+    markLocalChangeAndSync();
     showToast(isRightPanelCollapsed ? '◧ 已收起右侧仪表盘，卡片区已自动拓宽' : '◧ 已展开右侧实时仪表盘');
   }
 
@@ -511,7 +468,7 @@
     }
   }
 
-  // ==================== 8. 双层渐进式超清图标引擎（离线秒开 + 自动升清） ====================
+  // ==================== 7. 双层渐进式超清图标引擎 ====================
   const BROKEN_BASE64_HOSTS = new Set(['photomosh.com', 'www.world-creator.com', 'www.pbrmax.cn']);
 
   function buildOfflineIconMaps() {
@@ -538,7 +495,7 @@
     }
   }
 
-  function hydrateOfflineBase64Icons() {
+  function hydrateOfflineBase64Icons(skipSync = true) {
     let updated = false;
     bookmarks.forEach(bm => {
       const matched = findOfflineBase64(bm.url);
@@ -547,7 +504,7 @@
         updated = true;
       }
     });
-    if (updated) saveCoreState();
+    if (updated) saveCoreState(skipSync);
   }
 
   function findOfflineBase64(url) {
@@ -623,8 +580,20 @@
     if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'flex';
   }
 
-  function saveCoreState() {
-    storeSet({ [KEYS.bookmarks]: bookmarks, [KEYS.spaceGroups]: spaceGroups });
+  function markLocalChangeAndSync() {
+    localUpdatedAt = Date.now();
+    writeStoreInternal({ [KEYS.updatedAt]: localUpdatedAt });
+    scheduleAutoSync();
+  }
+
+  function saveCoreState(skipSync = false) {
+    if (!skipSync) {
+      localUpdatedAt = Date.now();
+      writeStoreInternal({ [KEYS.bookmarks]: bookmarks, [KEYS.spaceGroups]: spaceGroups, [KEYS.updatedAt]: localUpdatedAt });
+      scheduleAutoSync();
+    } else {
+      writeStoreInternal({ [KEYS.bookmarks]: bookmarks, [KEYS.spaceGroups]: spaceGroups, [KEYS.updatedAt]: localUpdatedAt });
+    }
   }
 
   function getGroupsForSpace(spaceId) {
@@ -634,7 +603,8 @@
     });
     return Array.from(set);
   }
-// ==================== 9. 空间 Dock 与左侧分组目录渲染 ====================
+
+  // ==================== 8. 空间 Dock 与左侧分组目录渲染 ====================
   function switchSpace(spaceId, group = 'all') {
     currentSpace = spaceId;
     currentGroup = group;
@@ -648,7 +618,7 @@
     const dock = document.getElementById('spaceDockBar');
     if (!dock) return;
 
-    dock.innerHTML = SPACES_CONFIG.map(sp => {
+    dock.innerHTML = SPACES_CONFIG.map((sp, idx) => {
       const active = currentSpace === sp.id && !searchQuery.trim();
       let count = 0;
       if (sp.id === 'home') count = bookmarks.filter(b => b.pinned).length;
@@ -663,6 +633,7 @@
         <button
           type="button"
           data-dock-space="${sp.id}"
+          title="快捷键 ${idx + 1} 快速切换至${sp.name}"
           ${dropType}
           class="shrink-0 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
             active
@@ -690,7 +661,7 @@
     const dragTip = document.getElementById('sidebarDragTip');
     if (!nav) return;
 
-    const spObj = SPACES_CONFIG.find(s => s.id === currentSpace) || SPACES_CONFIG[0];
+    const spObj = SPACES_CONFIG.find(s => s.id === currentSpace) || SPACES_CONFIG[0] || { id: 'home', name: '首页聚焦', virtual: true };
     if (header) header.textContent = spObj.name;
     if (addBtn) addBtn.classList.toggle('hidden', !!spObj.virtual || !!spObj.isTools);
     if (dragTip) dragTip.classList.toggle('hidden', !isEditMode || !!spObj.isTools);
@@ -857,11 +828,44 @@
     showToast(`🗑️ 已删除分组「${groupName}」`);
   }
 
-  // ==================== 10. 主内容区卡片、分组折叠与工具卡片渲染 ====================
+  // ==================== 9. 主内容区渲染（含拼音首字母 + 高频加权检索） ====================
   function getCardGridClass() {
     return isRightPanelCollapsed
       ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3.5'
       : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5';
+  }
+
+  function searchBookmarksWeighted(query) {
+    const q = query.trim().toLowerCase();
+    const visitMap = new Map(recentVisits.map(r => [r.id, r.count || 1]));
+
+    return bookmarks
+      .map(bm => {
+        const title = (bm.title || '').toLowerCase();
+        const desc = (bm.desc || '').toLowerCase();
+        const url = (bm.url || '').toLowerCase();
+        const group = (bm.group || '').toLowerCase();
+        const titlePy = getPinyinInitials(bm.title || '');
+        const descPy = getPinyinInitials(bm.desc || '');
+        const groupPy = getPinyinInitials(bm.group || '');
+
+        let score = 0;
+        if (title === q) score += 200;
+        else if (title.startsWith(q)) score += 140;
+        else if (title.includes(q)) score += 100;
+        else if (titlePy.includes(q)) score += 85;
+
+        if (url.includes(q)) score += 65;
+        if (desc.includes(q) || group.includes(q)) score += 35;
+        else if (descPy.includes(q) || groupPy.includes(q)) score += 25;
+
+        if (score === 0) return null;
+        score += Math.min(60, (visitMap.get(bm.id) || 0) * 6) + (bm.pinned ? 18 : 0);
+        return { bm, score };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.bm);
   }
 
   function createBookmarkCardHtml(bm) {
@@ -970,7 +974,7 @@
               <span class="text-[11px] font-mono px-2 py-0.5 rounded-full theme-badge border">${toolsList.length}</span>
             </h2>
           </div>
-          <span class="text-[11px] text-slate-400 hidden sm:inline">纯浏览器本地运算 · 自动暂存防误关</span>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">支持 Ctrl+V 贴图与拖拽 · 自动暂存防误关</span>
         </div>
         <div class="${getCardGridClass()}">
           ${toolsList.map(tool => createToolCardHtml(tool)).join('')}
@@ -1032,14 +1036,13 @@
     let html = '';
 
     if (q && currentEngine === 'local') {
-      const matchedTools = BUILTIN_TOOLS.filter(t => t.title.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
-      const matchedBms = bookmarks.filter(bm =>
-        (bm.title && bm.title.toLowerCase().includes(q)) ||
-        (bm.desc && bm.desc.toLowerCase().includes(q)) ||
-        (bm.url && bm.url.toLowerCase().includes(q)) ||
-        (bm.group && bm.group.toLowerCase().includes(q))
+      const matchedTools = BUILTIN_TOOLS.filter(t =>
+        t.title.toLowerCase().includes(q) ||
+        t.desc.toLowerCase().includes(q) ||
+        getPinyinInitials(t.title).includes(q)
       );
-      if (matchedBms.length > 0) html += renderGroupSectionHtml('', '🔎 全局书签匹配结果', matchedBms, false, false);
+      const matchedBms = searchBookmarksWeighted(q);
+      if (matchedBms.length > 0) html += renderGroupSectionHtml('', '🔎 全局智能匹配（高频优先）', matchedBms, false, false);
       if (matchedTools.length > 0) html += renderBuiltinToolsSection(matchedTools);
     } else if (currentSpace === 'tools') {
       html += renderBuiltinToolsSection(BUILTIN_TOOLS);
@@ -1091,7 +1094,7 @@
         <div class="specular-card rounded-3xl p-12 text-center space-y-3">
           <div class="text-4xl">🔭</div>
           <h3 class="text-base font-bold">当前视图暂无匹配内容</h3>
-          <p class="text-xs text-slate-400">可尝试更换关键词，或按 Tab 切换 Google / Bing / 淘宝 / 京东 搜索</p>
+          <p class="text-xs text-slate-400">可尝试更换关键词或拼音首字母，或按 Tab 切换外部搜索引擎</p>
           <button type="button" data-reset-home="1" class="mt-2 px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">返回首页聚焦</button>
         </div>
       `;
@@ -1113,8 +1116,20 @@
       });
     });
   }
+  // ===== [PART 1 END] =====
+// ===== [PART 2 START] =====
+  // ==================== 10. 拖拽排序、分组换组、后台静默打开与右键菜单 ====================
+  function openBookmarkUrl(bmId, url, inBackground = false) {
+    if (!url) return;
+    recordBookmarkVisit(bmId, url);
+    if (inBackground && IS_EXTENSION && chrome.tabs && chrome.tabs.create) {
+      chrome.tabs.create({ url, active: false });
+      showToast('📑 已在后台新标签页静默打开');
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
 
-  // ==================== 11. 拖拽排序、分组换组、右键菜单与键盘启动器 ====================
   function moveBookmarkTo(bmId, targetSpace, targetGroup) {
     const bm = bookmarks.find(b => b.id === bmId);
     if (!bm) return;
@@ -1158,7 +1173,7 @@
 
     menu.classList.remove('hidden');
     const vw = window.innerWidth, vh = window.innerHeight;
-    const mw = menu.offsetWidth || 176, mh = menu.offsetHeight || 210;
+    const mw = menu.offsetWidth || 176, mh = menu.offsetHeight || 245;
     menu.style.left = `${Math.max(8, Math.min(e.clientX, vw - mw - 12))}px`;
     menu.style.top = `${Math.max(8, Math.min(e.clientY, vh - mh - 12))}px`;
   }
@@ -1168,6 +1183,7 @@
     document.getElementById('cardContextMenu')?.classList.add('hidden');
   }
 
+  // ==================== 11. 搜索与键盘启动器 ====================
   function setSearchEngine(engine) {
     currentEngine = engine;
     kbdSelectedIndex = -1;
@@ -1238,8 +1254,9 @@
             openToolModal(card.getAttribute('data-open-tool'));
           } else {
             const bmId = card.getAttribute('data-bm-id');
-            const url = card.getAttribute('data-kbd-url');
-            if (url) { recordBookmarkVisit(bmId, url); window.open(url, '_blank', 'noopener,noreferrer'); }
+            const bm = bookmarks.find(b => b.id === bmId);
+            const url = bm ? bm.url : card.getAttribute('data-kbd-url');
+            if (url) openBookmarkUrl(bmId, url, e.ctrlKey || e.metaKey);
           }
           return;
         }
@@ -1267,7 +1284,7 @@
     renderMainContent();
   }
 
-  // ==================== 12. 管理模式、书签 CRUD、移动分组、重复网址体检 ====================
+  // ==================== 12. 管理模式、书签 CRUD（含非阻塞撤销删除）、重复与死链体检 ====================
   function toggleEditMode() {
     isEditMode = !isEditMode;
     const textEl = document.getElementById('editModeText');
@@ -1377,18 +1394,42 @@
   }
 
   function deleteBookmark(id) {
-    const target = bookmarks.find(b => b.id === id);
-    if (!target) return;
-    if (confirm(`确定要删除书签「${target.title}」吗？`)) {
-      bookmarks = bookmarks.filter(b => b.id !== id);
-      recentVisits = recentVisits.filter(r => r.id !== id);
-      storeSet({ [KEYS.recentVisits]: recentVisits });
-      saveCoreState();
-      renderSpaceDock();
-      renderSidebarGroups();
-      renderMainContent();
-      showToast(`🗑️ 已删除「${target.title}」`);
+    const idx = bookmarks.findIndex(b => b.id === id);
+    if (idx === -1) return;
+    const target = bookmarks[idx];
+    const removedVisit = recentVisits.find(r => r.id === id) || null;
+    lastDeletedUndo = { bm: { ...target }, index: idx, visit: removedVisit };
+
+    bookmarks.splice(idx, 1);
+    recentVisits = recentVisits.filter(r => r.id !== id);
+    writeStoreInternal({ [KEYS.recentVisits]: recentVisits });
+    saveCoreState();
+    renderSpaceDock();
+    renderSidebarGroups();
+    renderMainContent();
+
+    showToast(`🗑️ 已删除「${target.title}」`, { label: '↩️ 撤销', duration: 5500 });
+  }
+
+  function undoLastDelete() {
+    if (!lastDeletedUndo) return;
+    const { bm, index, visit } = lastDeletedUndo;
+    lastDeletedUndo = null;
+    if (!bookmarks.some(b => b.id === bm.id)) {
+      const safeIdx = Math.min(Math.max(0, index), bookmarks.length);
+      bookmarks.splice(safeIdx, 0, bm);
+      if (!spaceGroups[bm.space]) spaceGroups[bm.space] = [];
+      if (!spaceGroups[bm.space].includes(bm.group)) spaceGroups[bm.space].push(bm.group);
     }
+    if (visit && !recentVisits.some(r => r.id === visit.id)) {
+      recentVisits.unshift(visit);
+      writeStoreInternal({ [KEYS.recentVisits]: recentVisits });
+    }
+    saveCoreState();
+    renderSpaceDock();
+    renderSidebarGroups();
+    renderMainContent();
+    showToast(`↩️ 已恢复书签「${bm.title}」`);
   }
 
   function togglePinBookmark(id) {
@@ -1430,10 +1471,18 @@
     if (el) el.textContent = `${bookmarks.length} 个书签`;
     const report = document.getElementById('duplicateReportBox');
     if (report) { report.innerHTML = ''; report.classList.add('hidden'); }
+    populateSyncModalFields();
+    refreshMaintenanceUI();
     document.getElementById('dataCenterModal')?.classList.remove('hidden');
   }
 
-  function closeDataCenterModal() { document.getElementById('dataCenterModal')?.classList.add('hidden'); }
+  function closeDataCenterModal() {
+    if (linkCheckAbortController) {
+      linkCheckAbortController.abort();
+      linkCheckAbortController = null;
+    }
+    document.getElementById('dataCenterModal')?.classList.add('hidden');
+  }
 
   function canonicalUrlKey(url) {
     try {
@@ -1443,6 +1492,7 @@
   }
 
   function scanDuplicateBookmarks() {
+    if (linkCheckAbortController) { linkCheckAbortController.abort(); linkCheckAbortController = null; }
     const box = document.getElementById('duplicateReportBox');
     if (!box) return;
     const map = new Map();
@@ -1480,9 +1530,151 @@
     `;
   }
 
-  function exportData() {
+  async function checkDeadLinks() {
+    const box = document.getElementById('duplicateReportBox');
+    if (!box) return;
+    if (linkCheckAbortController) {
+      linkCheckAbortController.abort();
+      linkCheckAbortController = null;
+      showToast('⏹️ 已停止书签连通性体检');
+      return;
+    }
+
+    const controller = new AbortController();
+    linkCheckAbortController = controller;
+    const total = bookmarks.length;
+    const failed = [];
+    let checked = 0;
+
+    box.classList.remove('hidden');
+    const renderProgress = (done = false) => {
+      const pct = total ? Math.round((checked / total) * 100) : 100;
+      const listHtml = failed.length > 0
+        ? failed.map(item => `
+            <div class="flex items-center justify-between gap-2 py-1 border-b border-slate-200/40 dark:border-slate-800 last:border-0">
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold truncate text-slate-700 dark:text-slate-200">${escapeHtml(item.title)}</div>
+                <div class="font-mono text-[10px] text-slate-400 truncate">${escapeHtml(item.url)}</div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button type="button" data-dead-open-url="${escapeHtml(item.url)}" class="theme-text hover:underline">验证</button>
+                <button type="button" data-dead-del-id="${escapeHtml(item.id)}" class="text-rose-500 hover:underline">删除</button>
+              </div>
+            </div>
+          `).join('')
+        : (done ? `<div class="text-center py-2 text-emerald-500 font-semibold">✅ 全部 ${total} 个书签均正常连通！</div>` : '');
+
+      box.innerHTML = `
+        <div class="space-y-1.5 pb-1.5 border-b border-slate-200/70 dark:border-slate-700/70">
+          <div class="flex items-center justify-between">
+            <span class="font-bold ${done ? 'text-emerald-500' : 'theme-text'}">
+              ${done ? `🩺 体检完成：发现 ${failed.length} 个超时或疑似失效站点` : `🩺 正在并发探测连通性 (${checked}/${total} · ${pct}%)...`}
+            </span>
+            ${!done ? `<button type="button" data-dead-stop="1" class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">停止</button>` : ''}
+          </div>
+          <div class="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div class="h-full theme-solid-bg rounded-full transition-all" style="width:${pct}%"></div>
+          </div>
+          <div class="text-[10px] text-slate-400">注：海外站点受当前网络/代理节点影响，删除前建议先点「验证」确认</div>
+        </div>
+        ${listHtml}
+      `;
+    };
+
+    renderProgress(false);
+
+    const queue = [...bookmarks];
+    const probeOne = async bm => {
+      if (controller.signal.aborted) return;
+      const isPrivate = !bm.url || bm.url.includes('hzpipeline.com') || bm.url.includes('192.168.') || bm.url.includes('localhost');
+      if (!isPrivate) {
+        const tCtrl = new AbortController();
+        const timer = setTimeout(() => tCtrl.abort(), 5500);
+        const onParentAbort = () => tCtrl.abort();
+        controller.signal.addEventListener('abort', onParentAbort, { once: true });
+        try {
+          await fetch(bm.url, { mode: 'no-cors', cache: 'no-store', signal: tCtrl.signal });
+        } catch {
+          if (!controller.signal.aborted) failed.push(bm);
+        } finally {
+          clearTimeout(timer);
+          controller.signal.removeEventListener('abort', onParentAbort);
+        }
+      }
+      checked++;
+      if (!controller.signal.aborted && (checked % 4 === 0 || checked === total)) renderProgress(false);
+    };
+
+    const workers = Array.from({ length: 6 }, async () => {
+      while (queue.length > 0 && !controller.signal.aborted) {
+        await probeOne(queue.shift());
+      }
+    });
+    await Promise.all(workers);
+
+    if (linkCheckAbortController === controller) {
+      linkCheckAbortController = null;
+      renderProgress(true);
+    }
+  }
+
+  async function collectCurrentSettings() {
+    const saved = await storeGetAll([KEYS.theme, KEYS.accent, KEYS.rightPanel, KEYS.city, KEYS.collapsed, KEYS.customLogo]);
+    const customLogo = typeof saved[KEYS.customLogo] === 'string' && saved[KEYS.customLogo].length <= 200000
+      ? saved[KEYS.customLogo]
+      : '';
+    return {
+      theme: saved[KEYS.theme] || (document.documentElement.classList.contains('dark') ? 'dark' : 'light'),
+      accent: saved[KEYS.accent] || document.body.getAttribute('data-accent') || 'indigo',
+      rightPanel: isRightPanelCollapsed ? 'collapsed' : 'expanded',
+      city: saved[KEYS.city] || DEFAULT_WEATHER_CITY,
+      collapsed: collapsedGroups || {},
+      customLogo
+    };
+  }
+
+  function applySettingsPayload(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    const toSave = {};
+    if (settings.theme === 'light' || settings.theme === 'dark') {
+      applyThemeUI(settings.theme);
+      toSave[KEYS.theme] = settings.theme;
+    }
+    if (typeof settings.accent === 'string') {
+      setAccentColor(settings.accent, false, true);
+      toSave[KEYS.accent] = settings.accent;
+    }
+    if (settings.rightPanel === 'collapsed' || settings.rightPanel === 'expanded') {
+      isRightPanelCollapsed = settings.rightPanel === 'collapsed';
+      applyRightPanelUI();
+      toSave[KEYS.rightPanel] = settings.rightPanel;
+    }
+    if (typeof settings.city === 'string' && settings.city) {
+      toSave[KEYS.city] = settings.city;
+      const sel = document.getElementById('citySelector');
+      if (sel && sel.value !== settings.city) {
+        sel.value = settings.city;
+        changeWeatherCity(settings.city, false, true);
+      }
+    }
+    if (settings.collapsed && typeof settings.collapsed === 'object') {
+      collapsedGroups = settings.collapsed;
+      toSave[KEYS.collapsed] = collapsedGroups;
+    }
+    if (typeof settings.customLogo === 'string' && settings.customLogo) {
+      toSave[KEYS.customLogo] = settings.customLogo;
+      const img = document.getElementById('brandLogoImg');
+      const fav = document.getElementById('pageFavicon');
+      if (img) img.src = settings.customLogo;
+      if (fav) fav.href = settings.customLogo;
+    }
+    if (Object.keys(toSave).length > 0) writeStoreInternal(toSave);
+  }
+
+  async function exportData() {
     const memo = document.getElementById('quickMemoArea')?.value || '';
-    const payload = { version: 10, spaceGroups, bookmarks, todos, memo };
+    const settings = await collectCurrentSettings();
+    const payload = { version: 11, spaceGroups, bookmarks, todos, memo, settings };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1490,7 +1682,7 @@
     a.download = `workspace_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('📤 已导出完整 JSON 备份');
+    showToast('📤 已导出完整 JSON 备份（含界面偏好，不含私密 Token）');
   }
 
   function importData(file) {
@@ -1502,39 +1694,228 @@
         if (parsed && Array.isArray(parsed.bookmarks)) {
           bookmarks = parsed.bookmarks;
           if (parsed.spaceGroups) spaceGroups = parsed.spaceGroups;
-          if (Array.isArray(parsed.todos)) { todos = parsed.todos; saveTodos(); renderTodoList(); }
+          if (Array.isArray(parsed.todos)) { todos = parsed.todos; saveTodos(true); renderTodoList(); }
           if (typeof parsed.memo === 'string') {
             const area = document.getElementById('quickMemoArea');
-            if (area) { area.value = parsed.memo; handleMemoInput(parsed.memo); }
+            if (area) { area.value = parsed.memo; handleMemoInput(parsed.memo, true); }
           }
+          if (parsed.settings) applySettingsPayload(parsed.settings);
         } else if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].space) {
           bookmarks = parsed;
         } else {
           showToast('❌ JSON 格式不兼容当前架构');
           return;
         }
-        hydrateOfflineBase64Icons();
+        hydrateOfflineBase64Icons(true);
         saveCoreState();
         closeDataCenterModal();
         switchSpace('home', 'all');
-        showToast(`📥 成功恢复 ${bookmarks.length} 个书签`);
+        showToast(`📥 成功恢复 ${bookmarks.length} 个书签与偏好设置`);
       } catch { showToast('❌ 解析 JSON 备份文件失败'); }
     };
     reader.readAsText(file);
   }
 
+  const PRE_RESET_SNAPSHOT_KEY = 'ws_v11_pre_reset_snapshot';
+
+  async function refreshMaintenanceUI() {
+    // 每次打开默认收起危险区，防误触
+    document.getElementById('dcDangerBox')?.classList.add('hidden');
+    const arrow = document.getElementById('dcDangerArrow');
+    if (arrow) arrow.textContent = '▾';
+
+    // 动态显示种子书签数量，不再写死 168
+    const resetBtn = document.getElementById('dcResetBtn');
+    if (resetBtn) {
+      resetBtn.textContent = INITIAL_BOOKMARKS.length > 0
+        ? `🔄 恢复默认 (${INITIAL_BOOKMARKS.length}条)`
+        : '🔄 恢复出厂默认';
+    }
+
+    // 检查是否存在重置前本机快照，有则展示「一键恢复」按钮
+    const snapBtn = document.getElementById('dcRestoreSnapshotBtn');
+    const snapText = document.getElementById('dcRestoreSnapshotText');
+    if (!snapBtn) return;
+    const saved = await storeGetAll([PRE_RESET_SNAPSHOT_KEY]);
+    const snap = saved[PRE_RESET_SNAPSHOT_KEY];
+    if (snap && Array.isArray(snap.bookmarks) && snap.bookmarks.length > 0) {
+      const tStr = snap.savedAt
+        ? new Date(snap.savedAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '';
+      if (snapText) snapText.textContent = `恢复重置前快照 (${snap.bookmarks.length} 条${tStr ? ' · ' + tStr : ''})`;
+      snapBtn.classList.remove('hidden');
+    } else {
+      snapBtn.classList.add('hidden');
+    }
+  }
+
+  // 🟢 1. 增量补全缺失的默认书签（绝不删改自建书签与排序）
+  function mergeMissingDefaultBookmarks() {
+    if (INITIAL_BOOKMARKS.length === 0) {
+      showToast('⚠️ 未检测到 js/default-bookmarks.js，无法补全');
+      return;
+    }
+    const existingKeys = new Set(bookmarks.map(b => canonicalUrlKey(b.url)));
+    let added = 0;
+
+    INITIAL_BOOKMARKS.forEach(seed => {
+      const key = canonicalUrlKey(seed.url);
+      if (!existingKeys.has(key)) {
+        const cloned = JSON.parse(JSON.stringify(seed));
+        bookmarks.push(cloned);
+        existingKeys.add(key);
+        if (!spaceGroups[cloned.space]) spaceGroups[cloned.space] = [];
+        if (!spaceGroups[cloned.space].includes(cloned.group)) {
+          spaceGroups[cloned.space].push(cloned.group);
+        }
+        added++;
+      }
+    });
+
+    if (added === 0) {
+      showToast(`✅ 当前书签库已包含全部 ${INITIAL_BOOKMARKS.length} 条默认站点，无需补全`);
+      return;
+    }
+
+    hydrateOfflineBase64Icons(true);
+    saveCoreState(false);
+    const el = document.getElementById('dcTotalCount');
+    if (el) el.textContent = `${bookmarks.length} 个书签`;
+    renderSpaceDock();
+    renderSidebarGroups();
+    renderMainContent();
+    showToast(`✨ 已安全补全 ${added} 条缺失的默认书签（自建内容不受影响）`);
+  }
+
+  // 🟡 2. 仅重置界面外观、分组折叠与图标/天气缓存（书签、便签、待办一条不动）
+  function resetUiAndCaches() {
+    if (!confirm('将恢复默认深色主题、极光靛蓝强调色、展开全部折叠分组，并清理天气与图标缓存。\n\n你的书签、便签和待办完全不会受影响，是否继续？')) return;
+    applyThemeUI('dark');
+    setAccentColor('indigo', false, true);
+    isRightPanelCollapsed = false;
+    applyRightPanelUI();
+    collapsedGroups = {};
+    weatherCacheMap = {};
+    hdUpgradedCache.clear();
+
+    writeStoreInternal({
+      [KEYS.theme]: 'dark',
+      [KEYS.accent]: 'indigo',
+      [KEYS.rightPanel]: 'expanded',
+      [KEYS.collapsed]: {},
+      [KEYS.weatherCache]: {},
+      [KEYS.city]: DEFAULT_WEATHER_CITY
+    });
+
+    const citySel = document.getElementById('citySelector');
+    if (citySel) citySel.value = DEFAULT_WEATHER_CITY;
+    changeWeatherCity(DEFAULT_WEATHER_CITY, false, true);
+    renderMainContent();
+    showToast('🎨 已重置界面外观与本地缓存（书签与便签完好保留）');
+  }
+
+  // 自动留存重置前快照（本机扩展存储 + 自动下载 JSON 留底双保险）
+  function savePreResetSnapshot() {
+    if (bookmarks.length === 0) return;
+    const cleanBms = bookmarks.map(b => {
+      const item = { id: b.id, space: b.space, group: b.group, title: b.title, url: b.url, desc: b.desc };
+      if (b.pinned) item.pinned = true;
+      if (b.customIcon) item.customIcon = b.customIcon;
+      return item;
+    });
+    const memo = document.getElementById('quickMemoArea')?.value || '';
+    const snapshot = {
+      savedAt: Date.now(),
+      bookmarks: cleanBms,
+      spaceGroups: JSON.parse(JSON.stringify(spaceGroups)),
+      todos: JSON.parse(JSON.stringify(todos)),
+      memo
+    };
+    writeStoreInternal({ [PRE_RESET_SNAPSHOT_KEY]: snapshot });
+
+    // 同步自动下载一份本地 JSON 文件作为硬备份
+    try {
+      const blob = new Blob([JSON.stringify({ version: 11, ...snapshot }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pre_reset_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+
+  // ↩️ 一键恢复上次重置前的本机快照
+  async function restorePreResetSnapshot() {
+    const saved = await storeGetAll([PRE_RESET_SNAPSHOT_KEY]);
+    const snap = saved[PRE_RESET_SNAPSHOT_KEY];
+    if (!snap || !Array.isArray(snap.bookmarks)) {
+      showToast('💡 暂无可恢复的重置前快照');
+      return;
+    }
+    bookmarks = snap.bookmarks;
+    if (snap.spaceGroups) spaceGroups = { ...JSON.parse(JSON.stringify(INITIAL_SPACE_GROUPS)), ...snap.spaceGroups };
+    if (Array.isArray(snap.todos)) { todos = snap.todos; saveTodos(true); renderTodoList(); }
+    if (typeof snap.memo === 'string') {
+      const area = document.getElementById('quickMemoArea');
+      if (area) area.value = snap.memo;
+      handleMemoInput(snap.memo, true);
+    }
+    hydrateOfflineBase64Icons(true);
+    saveCoreState(true);
+    closeDataCenterModal();
+    switchSpace('home', 'all');
+    showToast(`↩️ 已成功恢复重置前的 ${bookmarks.length} 条书签与便签数据`);
+  }
+
+  // 🔴 3. 恢复出厂默认（动态差值提示 + 自动留底快照 + 云端硬隔离绝不自动覆盖 Gist）
   function resetDefaultData() {
-    if (!confirm('确定要重置回初始 168 个精选书签与默认空间分组吗？')) return;
+    if (INITIAL_BOOKMARKS.length === 0) {
+      showToast('⚠️ 未检测到 js/default-bookmarks.js，无法恢复默认');
+      return;
+    }
+    const msg = `当前本机共有 ${bookmarks.length} 条书签，确定要替换为出厂默认的 ${INITIAL_BOOKMARKS.length} 条吗？\n\n🛡️ 安全保障：\n1. 重置前会自动保存本机快照并下载 JSON 备份（随时可还原）\n2. 仅重置本机，不会自动覆盖 GitHub 云端 Gist`;
+    if (!confirm(msg)) return;
+
+    savePreResetSnapshot();
+    clearTimeout(autoSyncTimer);
+
     bookmarks = JSON.parse(JSON.stringify(INITIAL_BOOKMARKS));
     spaceGroups = JSON.parse(JSON.stringify(INITIAL_SPACE_GROUPS));
     collapsedGroups = {};
     hdUpgradedCache.clear();
-    storeSet({ [KEYS.collapsed]: collapsedGroups });
-    hydrateOfflineBase64Icons();
-    saveCoreState();
+    localUpdatedAt = Date.now();
+    writeStoreInternal({ [KEYS.collapsed]: collapsedGroups });
+    hydrateOfflineBase64Icons(true);
+    saveCoreState(true); // skipSync = true：云端硬隔离，绝不自动覆盖 Gist
+
     closeDataCenterModal();
     switchSpace('home', 'all');
-    showToast('🔄 已恢复至默认 168 个精选书签');
+    showToast(`🔄 本机已恢复默认 ${bookmarks.length} 条（已自动留底快照，云端数据未受影响）`, { duration: 4500 });
+  }
+
+  // 🔴 4. 清空本机全部书签（同样享受自动留底快照 + 云端硬隔离）
+  function clearAllLocalBookmarks() {
+    if (bookmarks.length === 0) {
+      showToast('💡 本机书签列表已经是空的');
+      return;
+    }
+    const msg = `⚠️ 高危操作：确定要清空本机全部 ${bookmarks.length} 条书签吗？\n\n🛡️ 执行前会自动保存快照并下载 JSON 备份，且不会覆盖 GitHub 云端数据。`;
+    if (!confirm(msg)) return;
+
+    savePreResetSnapshot();
+    clearTimeout(autoSyncTimer);
+
+    bookmarks = [];
+    spaceGroups = JSON.parse(JSON.stringify(INITIAL_SPACE_GROUPS));
+    collapsedGroups = {};
+    localUpdatedAt = Date.now();
+    writeStoreInternal({ [KEYS.collapsed]: collapsedGroups });
+    saveCoreState(true); // skipSync = true：绝不向云端推送空列表
+
+    closeDataCenterModal();
+    switchSpace('home', 'all');
+    showToast('🧹 已清空本机书签（随时可在数据中心一键恢复快照或拉取云端）', { duration: 4500 });
   }
 
   // ==================== 13. 自动识别网站名称与完整描述 ====================
@@ -1577,7 +1958,7 @@
 
     if (btnText) btnText.textContent = '抓取中...';
     try {
-      const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(rawUrl)}`);
+      const res = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(rawUrl)}`, {}, 5000);
       const json = await res.json();
       if (json && json.status === 'success' && json.data) {
         const ft = (json.data.title || '').trim();
@@ -1597,7 +1978,7 @@
     if (forceOverwrite || !hasDesc) descInput.value = `${fmtBrand} (${cleanHost}) 在线创作工具与数字资源平台`;
   }
 
-  // ==================== 14. 最近访问、双标签便签待办、时钟、天气、春节倒计时 ====================
+  // ==================== 14. 最近访问、双标签便签待办、时钟、三路容灾天气与春节倒计时 ====================
   function recordBookmarkVisit(bmId, url) {
     const bm = bookmarks.find(b => b.id === bmId) || { id: bmId || ('url_' + url), title: extractDomain(url), url };
     const idx = recentVisits.findIndex(r => r.id === bm.id || r.url === bm.url);
@@ -1612,7 +1993,7 @@
       recentVisits.unshift({ id: bm.id, title: bm.title || extractDomain(bm.url), url: bm.url, count: 1, lastTime: Date.now() });
     }
     if (recentVisits.length > 40) recentVisits = recentVisits.slice(0, 40);
-    storeSet({ [KEYS.recentVisits]: recentVisits });
+    writeStoreInternal({ [KEYS.recentVisits]: recentVisits });
     renderRecentVisitsList();
   }
 
@@ -1654,7 +2035,7 @@
 
   function switchNoteTab(tab, save = true) {
     currentNoteTab = tab === 'todo' ? 'todo' : 'memo';
-    if (save) storeSet({ [KEYS.noteTab]: currentNoteTab });
+    if (save) writeStoreInternal({ [KEYS.noteTab]: currentNoteTab });
     const isMemo = currentNoteTab === 'memo';
     document.getElementById('memoPane')?.classList.toggle('hidden', !isMemo);
     document.getElementById('todoPane')?.classList.toggle('hidden', isMemo);
@@ -1680,7 +2061,12 @@
     }
   }
 
-  function saveTodos() { storeSet({ [KEYS.todos]: todos }); updateSaveStatusTimestamp(); }
+  function saveTodos(skipSync = false) {
+    if (!skipSync) localUpdatedAt = Date.now();
+    writeStoreInternal({ [KEYS.todos]: todos, [KEYS.updatedAt]: localUpdatedAt });
+    updateSaveStatusTimestamp();
+    if (!skipSync) scheduleAutoSync();
+  }
 
   function renderTodoList() {
     const listEl = document.getElementById('todoList');
@@ -1706,10 +2092,12 @@
     `).join('');
   }
 
-  function handleMemoInput(val) {
-    storeSet({ [KEYS.memo]: val });
+  function handleMemoInput(val, skipSync = false) {
+    if (!skipSync) localUpdatedAt = Date.now();
+    writeStoreInternal({ [KEYS.memo]: val, [KEYS.updatedAt]: localUpdatedAt });
     updateMemoCount(val);
     updateSaveStatusTimestamp();
+    if (!skipSync) scheduleAutoSync();
   }
 
   function updateMemoCount(val) {
@@ -1761,47 +2149,93 @@
   }
 
   function initWeather(savedCity) {
+    const cityVal = savedCity || DEFAULT_WEATHER_CITY;
     const selector = document.getElementById('citySelector');
-    if (selector) selector.value = savedCity;
-    changeWeatherCity(savedCity, false);
+    if (selector) selector.value = cityVal;
+    changeWeatherCity(cityVal, false, true);
   }
 
-  function changeWeatherCity(val, notify = true) {
-    storeSet({ [KEYS.city]: val });
+  function changeWeatherCity(val, notify = true, skipSync = false) {
+    writeStoreInternal({ [KEYS.city]: val });
+    if (!skipSync) markLocalChangeAndSync();
     if (val === 'auto') {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           pos => fetchWeatherData(pos.coords.latitude, pos.coords.longitude, '本地定位'),
-          () => fetchWeatherData(31.2304, 121.4737, '上海(默认)')
+          () => fetchWeatherData(39.9042, 116.4074, '北京')
         );
       } else {
-        fetchWeatherData(31.2304, 121.4737, '上海(默认)');
+        fetchWeatherData(39.9042, 116.4074, '北京');
       }
     } else {
       const [lat, lon, name] = val.split(',');
-      fetchWeatherData(parseFloat(lat), parseFloat(lon), name);
-      if (notify) showToast(`⛅ 已切换实时天气城市：${name}`);
+      fetchWeatherData(parseFloat(lat), parseFloat(lon), name || '北京');
+      if (notify) showToast(`⛅ 已切换实时天气城市：${name || '北京'}`);
     }
   }
 
-  async function fetchWeatherData(lat, lon, cityName) {
+  function renderWeatherUI(w, isCached = false) {
+    document.getElementById('weatherIcon').textContent = w.icon;
+    document.getElementById('weatherTemp').textContent = w.temp;
+    document.getElementById('weatherDesc').textContent = isCached ? `${w.desc} (上次缓存)` : w.desc;
+    document.getElementById('weatherFeels').textContent = `${w.feels}°`;
+    document.getElementById('weatherHumid').textContent = `${w.humid}%`;
+    document.getElementById('weatherWind').textContent = `${w.wind}km/h`;
+  }
+
+  async function fetchFromOpenMeteo(lat, lon) {
+    const res = await fetchWithTimeout(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`,
+      { cache: 'no-store' }, 5000
+    );
+    if (!res.ok) throw new Error('open-meteo fail');
+    const data = await res.json();
+    if (!data || !data.current) throw new Error('open-meteo empty');
+    const cur = data.current;
+    const wmo = parseWMOWeather(cur.weather_code);
+    return { icon: wmo.icon, desc: wmo.desc, temp: Math.round(cur.temperature_2m), feels: Math.round(cur.apparent_temperature), humid: Math.round(cur.relative_humidity_2m), wind: Math.round(cur.wind_speed_10m) };
+  }
+
+  async function fetchFromWttr(baseUrl, lat, lon) {
+    const res = await fetchWithTimeout(`${baseUrl}/${lat},${lon}?format=j1`, { cache: 'no-store' }, 5500);
+    if (!res.ok) throw new Error('wttr fail');
+    const data = await res.json();
+    const cur = data?.current_condition?.[0];
+    if (!cur) throw new Error('wttr empty');
+    const wmo = parseWttrCode(parseInt(cur.weatherCode, 10));
+    return { icon: wmo.icon, desc: wmo.desc, temp: Math.round(parseFloat(cur.temp_C)), feels: Math.round(parseFloat(cur.FeelsLikeC)), humid: Math.round(parseFloat(cur.humidity)), wind: Math.round(parseFloat(cur.windspeedKmph)) };
+  }
+
+  async function fetchWeatherData(lat, lon, cityName, isManualRetry = false) {
+    lastWeatherArgs = { lat, lon, cityName };
     const badge = document.getElementById('weatherCityBadge');
+    const descEl = document.getElementById('weatherDesc');
     if (badge) badge.textContent = cityName;
-    try {
-      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`);
-      const data = await res.json();
-      if (!data || !data.current) throw new Error('err');
-      const cur = data.current;
-      const wmo = parseWMOWeather(cur.weather_code);
-      document.getElementById('weatherIcon').textContent = wmo.icon;
-      document.getElementById('weatherTemp').textContent = Math.round(cur.temperature_2m);
-      document.getElementById('weatherDesc').textContent = wmo.desc;
-      document.getElementById('weatherFeels').textContent = `${Math.round(cur.apparent_temperature)}°`;
-      document.getElementById('weatherHumid').textContent = `${cur.relative_humidity_2m}%`;
-      document.getElementById('weatherWind').textContent = `${Math.round(cur.wind_speed_10m)}km/h`;
-    } catch {
-      document.getElementById('weatherDesc').textContent = '气象离线缓存模式';
+
+    const cached = weatherCacheMap[cityName];
+    if (cached && !isManualRetry) renderWeatherUI(cached, true);
+    else if (descEl) descEl.textContent = '正在同步气象数据...';
+
+    const providers = [
+      () => fetchFromOpenMeteo(lat, lon),
+      () => fetchFromWttr('https://wttr.in', lat, lon),
+      () => fetchFromWttr('https://wttr.is', lat, lon)
+    ];
+
+    for (const run of providers) {
+      try {
+        const result = await run();
+        weatherCacheMap[cityName] = { ...result, savedAt: Date.now() };
+        writeStoreInternal({ [KEYS.weatherCache]: weatherCacheMap });
+        renderWeatherUI(result, false);
+        if (isManualRetry) showToast(`⛅ ${cityName}实时天气已刷新`);
+        return;
+      } catch {}
     }
+
+    if (cached) renderWeatherUI(cached, true);
+    else if (descEl) descEl.textContent = '网络暂不可达 · 点图标重试';
+    if (isManualRetry) showToast('⚠️ 三路气象源均连接超时，请检查网络或代理设置');
   }
 
   function parseWMOWeather(code) {
@@ -1816,12 +2250,24 @@
     return { icon: '🌤️', desc: '天气良好' };
   }
 
-  // ==================== 15. 内置 8 大纯本地效率工具（纯事件委托 + 全量状态防误关） ====================
+  function parseWttrCode(code) {
+    if (code === 113) return { icon: '☀️', desc: '晴朗无云 · 适宜创作' };
+    if (code === 116) return { icon: '⛅', desc: '晴间多云 · 体感舒适' };
+    if (code === 119 || code === 122) return { icon: '☁️', desc: '阴天多云 · 光线柔和' };
+    if ([143, 248, 260].includes(code)) return { icon: '🌫️', desc: '轻雾弥漫 · 注意出行' };
+    if ([200, 386, 389, 392, 395].includes(code)) return { icon: '⛈️', desc: '雷阵雨 · 留意天气变化' };
+    if ([179, 182, 185, 227, 230, 323, 326, 329, 332, 335, 338, 368, 371].includes(code)) return { icon: '❄️', desc: '降雪天气 · 注意保暖' };
+    if ([176, 263, 266, 293, 296, 299, 302, 305, 308, 353, 356, 359].includes(code)) return { icon: '🌧️', desc: '微雨阵雨 · 记得带伞' };
+    return { icon: '🌤️', desc: '天气良好' };
+  }
+
+  // ==================== 15. 内置 8 大纯本地效率工具（Ctrl+V 贴图/拖拽 + 真实主色聚类 + 标准 UTF-8 编解码） ====================
   function openToolModal(type) {
     const modal = document.getElementById('toolModal');
     const title = document.getElementById('toolModalTitle');
     const body = document.getElementById('toolModalBody');
     if (!modal || !body) return;
+    currentToolType = type;
 
     if (type === 'json') {
       title.textContent = '📋 JSON 格式化 / 压缩 / 校验器';
@@ -1851,7 +2297,7 @@
       `;
       updateTextStats();
     } else if (type === 'radius') {
-      title.textContent = '🖼️ 本地图片圆角合成器 (Canvas 零上传)';
+      title.textContent = '🖼️ 本地图片圆角合成器 (支持 Ctrl+V 贴图 / 拖拽)';
       body.innerHTML = `
         <div class="space-y-3 text-xs">
           <input type="file" id="radiusFileInput" accept="image/*" class="tool-file-input">
@@ -1860,8 +2306,9 @@
             <input type="range" id="radiusSlider" min="0" max="200" value="${escapeHtml(toolSessionCache.radiusVal)}" class="flex-1 accent-indigo-600">
             <span id="radiusValLabel" class="font-mono font-bold theme-text w-12 text-right">${escapeHtml(toolSessionCache.radiusVal)}px</span>
           </div>
-          <div class="flex justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-4 border border-dashed border-slate-300 dark:border-slate-700">
+          <div data-img-dropzone="radius" class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-4 border-2 border-dashed border-slate-300 dark:border-slate-700 transition">
             <canvas id="radiusCanvas" class="max-h-56 max-w-full rounded shadow-sm"></canvas>
+            <div class="text-[11px] text-slate-400 mt-2">💡 可直接按 Ctrl+V 粘贴截图，或拖入本地图片到此区域</div>
           </div>
           <div class="flex justify-end">
             <button type="button" data-tool-btn="radius-download" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold">💾 导出透明 PNG</button>
@@ -1898,12 +2345,13 @@
       convertTimestamp();
       syncColorHex(initHex);
     } else if (type === 'palette') {
-      title.textContent = '🎨 本地图片吸管取色 & 调色板提取器';
+      title.textContent = '🎨 图片吸管取色 & 主色聚类调色板 (支持 Ctrl+V 贴图 / 拖拽)';
       body.innerHTML = `
         <div class="space-y-3 text-xs">
           <input type="file" id="paletteFileInput" accept="image/*" class="tool-file-input">
-          <div class="flex justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-3 border border-dashed border-slate-300 dark:border-slate-700 overflow-hidden">
+          <div data-img-dropzone="palette" class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-3 border-2 border-dashed border-slate-300 dark:border-slate-700 overflow-hidden transition">
             <canvas id="paletteCanvas" class="max-h-56 max-w-full rounded cursor-crosshair shadow-sm"></canvas>
+            <div class="text-[11px] text-slate-400 mt-2">💡 截完参考图后直接 Ctrl+V 粘贴或拖入图片，点击画布任意像素取色</div>
           </div>
           <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2.5">
@@ -1920,7 +2368,7 @@
       `;
       if (paletteSourceImg) drawPaletteImg(paletteSourceImg);
     } else if (type === 'converter') {
-      title.textContent = '🔄 本地图片格式转换 & 尺寸压缩器';
+      title.textContent = '🔄 本地图片格式转换 & 压缩 (支持 Ctrl+V 贴图 / 拖拽)';
       body.innerHTML = `
         <div class="space-y-3.5 text-xs">
           <input type="file" id="convFileInput" accept="image/*" class="tool-file-input">
@@ -1944,8 +2392,8 @@
               <input type="range" id="convQuality" min="10" max="100" value="${escapeHtml(toolSessionCache.convQuality)}" class="w-full accent-indigo-600 mt-2">
             </div>
           </div>
-          <div id="convInfoBadge" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/70 font-mono text-slate-500 text-center">请选择一张本地图片</div>
-          <div class="flex justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-3 border border-dashed border-slate-300 dark:border-slate-700">
+          <div id="convInfoBadge" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/70 font-mono text-slate-500 text-center">请选择、拖入或按 Ctrl+V 粘贴图片</div>
+          <div data-img-dropzone="converter" class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-3 border-2 border-dashed border-slate-300 dark:border-slate-700 transition">
             <canvas id="convCanvas" class="max-h-48 max-w-full rounded shadow-sm"></canvas>
           </div>
           <div class="flex justify-end">
@@ -2015,7 +2463,7 @@
       body.innerHTML = `
         <div class="space-y-4 text-xs">
           <div class="space-y-2">
-            <div class="font-bold">1. Base64 / URL 编解码</div>
+            <div class="font-bold">1. 标准 UTF-8 Base64 / URL 编解码</div>
             <textarea id="codecInput" rows="4" placeholder="在此输入文本或链接..." class="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-xs focus:outline-none focus:border-indigo-500">${escapeHtml(toolSessionCache.codec)}</textarea>
             <div class="flex flex-wrap gap-1.5">
               <button type="button" data-tool-btn="b64enc" class="px-3 py-1.5 rounded-lg theme-solid-bg text-white font-semibold">Base64 编码</button>
@@ -2043,7 +2491,36 @@
     modal.classList.remove('hidden');
   }
 
-  function closeToolModal() { document.getElementById('toolModal')?.classList.add('hidden'); }
+  function closeToolModal() {
+    currentToolType = '';
+    document.getElementById('toolModal')?.classList.add('hidden');
+  }
+
+  function loadImageFileToActiveTool(file, targetTool = currentToolType) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        if (targetTool === 'radius') {
+          loadedRadiusImg = img;
+          previewRadiusImage();
+          showToast('🖼️ 图片已载入圆角合成器');
+        } else if (targetTool === 'palette') {
+          paletteSourceImg = img;
+          drawPaletteImg(img);
+          showToast('🎨 已完成主色聚类调色板提取');
+        } else if (targetTool === 'converter') {
+          convOriginalName = (file.name || 'clipboard_img').replace(/\.[^.]+$/, '') || 'image';
+          convSourceImg = img;
+          updateConvertedPreview();
+          showToast('🔄 图片已载入格式转换器');
+        }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
 
   function runJsonTool(mode) {
     const el = document.getElementById('jsonInput');
@@ -2072,33 +2549,27 @@
   }
 
   function previewRadiusImage() {
-    const fileInput = document.getElementById('radiusFileInput');
     const slider = document.getElementById('radiusSlider');
     const canvas = document.getElementById('radiusCanvas');
     if (!canvas || !slider) return;
     toolSessionCache.radiusVal = slider.value;
     const r = parseInt(slider.value, 10);
     document.getElementById('radiusValLabel').textContent = r + 'px';
-    const draw = img => {
-      const ctx = canvas.getContext('2d');
-      canvas.width = img.width; canvas.height = img.height;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const rad = Math.min(r, canvas.width / 2, canvas.height / 2);
-      ctx.beginPath();
-      ctx.moveTo(rad, 0);
-      ctx.arcTo(canvas.width, 0, canvas.width, canvas.height, rad);
-      ctx.arcTo(canvas.width, canvas.height, 0, canvas.height, rad);
-      ctx.arcTo(0, canvas.height, 0, 0, rad);
-      ctx.arcTo(0, 0, canvas.width, 0, rad);
-      ctx.closePath();
-      ctx.clip();
-      ctx.drawImage(img, 0, 0);
-    };
-    if (fileInput?.files?.[0]) {
-      const reader = new FileReader();
-      reader.onload = e => { const img = new Image(); img.onload = () => { loadedRadiusImg = img; draw(img); }; img.src = e.target.result; };
-      reader.readAsDataURL(fileInput.files[0]);
-    } else if (loadedRadiusImg) draw(loadedRadiusImg);
+    if (!loadedRadiusImg) return;
+    const img = loadedRadiusImg;
+    const ctx = canvas.getContext('2d');
+    canvas.width = img.width; canvas.height = img.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const rad = Math.min(r, canvas.width / 2, canvas.height / 2);
+    ctx.beginPath();
+    ctx.moveTo(rad, 0);
+    ctx.arcTo(canvas.width, 0, canvas.width, canvas.height, rad);
+    ctx.arcTo(canvas.width, canvas.height, 0, canvas.height, rad);
+    ctx.arcTo(0, canvas.height, 0, 0, rad);
+    ctx.arcTo(0, 0, canvas.width, 0, rad);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, 0, 0);
   }
 
   function convertTimestamp() {
@@ -2122,18 +2593,55 @@
     if (uo) uo.textContent = `UE Linear Vector3: (R=${(r / 255).toFixed(3)}, G=${(g / 255).toFixed(3)}, B=${(b / 255).toFixed(3)})`;
   }
 
+  function extractDominantPalette(ctx, width, height, count = 6) {
+    const { data } = ctx.getImageData(0, 0, width, height);
+    const totalPixels = width * height;
+    const stride = Math.max(1, Math.floor(totalPixels / 8000));
+    const buckets = new Map();
+
+    for (let p = 0; p < totalPixels; p += stride) {
+      const i = p * 4;
+      if (data[i + 3] < 128) continue;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      let bkt = buckets.get(key);
+      if (!bkt) { bkt = { r: 0, g: 0, b: 0, n: 0 }; buckets.set(key, bkt); }
+      bkt.r += r; bkt.g += g; bkt.b += b; bkt.n++;
+    }
+
+    const sorted = Array.from(buckets.values())
+      .map(b => ({ r: Math.round(b.r / b.n), g: Math.round(b.g / b.n), b: Math.round(b.b / b.n), n: b.n }))
+      .sort((a, b) => b.n - a.n);
+
+    const picked = [];
+    const tryPick = minDistSq => {
+      for (const c of sorted) {
+        if (picked.length >= count) break;
+        const farEnough = picked.every(p => {
+          const dr = p.r - c.r, dg = p.g - c.g, db = p.b - c.b;
+          return (dr * dr + dg * dg + db * db) >= minDistSq;
+        });
+        if (farEnough) picked.push(c);
+      }
+    };
+
+    tryPick(52 * 52);
+    if (picked.length < count) tryPick(28 * 28);
+    if (picked.length < count) tryPick(0);
+
+    return picked.map(c => '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase());
+  }
+
   function drawPaletteImg(img) {
     const canvas = document.getElementById('paletteCanvas');
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const scale = Math.min(1, 600 / Math.max(img.width, img.height));
-    canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const pts = [[0.2,0.2],[0.5,0.2],[0.8,0.2],[0.25,0.7],[0.5,0.75],[0.8,0.75]];
-    const swatches = pts.map(([px, py]) => {
-      const [r, g, b] = ctx.getImageData(Math.min(canvas.width - 1, Math.floor(canvas.width * px)), Math.min(canvas.height - 1, Math.floor(canvas.height * py)), 1, 1).data;
-      return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-    });
+
+    const swatches = extractDominantPalette(ctx, canvas.width, canvas.height, 6);
     const el = document.getElementById('extractedSwatches');
     if (el) {
       el.innerHTML = swatches.map(hex => `
@@ -2189,12 +2697,25 @@
     if (out) out.textContent = `${w} × ${Math.round((w * rh) / rw)} px`;
   }
 
+  function utf8ToBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    bytes.forEach(b => { binary += String.fromCharCode(b); });
+    return btoa(binary);
+  }
+
+  function base64ToUtf8(b64) {
+    const binary = atob(b64.trim());
+    const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
   function runCodec(mode) {
     const el = document.getElementById('codecInput');
     if (!el || !el.value) return;
     try {
-      if (mode === 'b64enc') el.value = btoa(unescape(encodeURIComponent(el.value)));
-      else if (mode === 'b64dec') el.value = decodeURIComponent(escape(atob(el.value.trim())));
+      if (mode === 'b64enc') el.value = utf8ToBase64(el.value);
+      else if (mode === 'b64dec') el.value = base64ToUtf8(el.value);
       else if (mode === 'urlenc') el.value = encodeURIComponent(el.value);
       else if (mode === 'urldec') el.value = decodeURIComponent(el.value);
       toolSessionCache.codec = el.value;
@@ -2213,9 +2734,9 @@
     if (out) out.value = pwd;
   }
 
-  // ==================== 16. 全局纯事件委托中心（100% MV3 CSP 合规） ====================
+  // ==================== 16. 全局纯事件委托中心 ====================
   function bindAllEvents() {
-    // 1) 左栏静态控件
+    // 1) 左栏控件 & 云同步配置（输入即自动保存 + 冲突处理）
     document.getElementById('brandLogoBtn')?.addEventListener('click', e => {
       if (isEditMode) { e.stopPropagation(); document.getElementById('brandLogoInput')?.click(); }
       else { clearSearchQuiet(); switchSpace('home', 'all'); }
@@ -2229,6 +2750,34 @@
     document.getElementById('editModeBtn')?.addEventListener('click', toggleEditMode);
     document.getElementById('exitEditModeBtn')?.addEventListener('click', toggleEditMode);
     document.getElementById('openDataCenterBtn')?.addEventListener('click', openDataCenterModal);
+    document.getElementById('storageBadgePill')?.addEventListener('click', openDataCenterModal);
+
+    document.getElementById('conflictPullBtn')?.addEventListener('click', () => pullFromGist(false));
+    document.getElementById('conflictForcePushBtn')?.addEventListener('click', () => pushToGist(false, true));
+
+    const autoSaveGhInputs = () => {
+      clearTimeout(configSaveTimer);
+      configSaveTimer = setTimeout(() => {
+        saveGhSyncConfigFromModal(false);
+        const st = document.getElementById('ghSyncStatusText');
+        if (st && ghSyncConfig.token) st.textContent = '配置已自动保存';
+      }, 350);
+    };
+    document.getElementById('ghTokenInput')?.addEventListener('input', autoSaveGhInputs);
+    document.getElementById('ghGistIdInput')?.addEventListener('input', autoSaveGhInputs);
+    document.getElementById('ghAutoSyncToggle')?.addEventListener('change', () => {
+      saveGhSyncConfigFromModal(false);
+      showToast(ghSyncConfig.autoSync ? '☁️ 已开启自动云同步' : '⏸️ 已暂停自动云同步（仍可手动推拉）');
+    });
+
+    document.getElementById('ghSaveConfigBtn')?.addEventListener('click', () => saveGhSyncConfigFromModal(true));
+    document.getElementById('ghPushBtn')?.addEventListener('click', () => { saveGhSyncConfigFromModal(false); pushToGist(false, true); });
+    document.getElementById('ghPullBtn')?.addEventListener('click', () => { saveGhSyncConfigFromModal(false); pullFromGist(false); });
+    document.getElementById('ghCopyGistIdBtn')?.addEventListener('click', () => {
+      const gid = (document.getElementById('ghGistIdInput')?.value || ghSyncConfig.gistId || '').trim();
+      if (!gid) { showToast('💡 请先点击「立即上传」自动生成 Gist ID'); return; }
+      navigator.clipboard.writeText(gid).then(() => showToast('📋 Gist ID 已复制，可粘贴到另一台电脑'));
+    });
 
     // 2) 搜索舱右上角图标与弹窗
     document.getElementById('accentPopoverBtn')?.addEventListener('click', toggleAccentPopover);
@@ -2244,7 +2793,7 @@
     document.getElementById('clearAllHistoryBtn')?.addEventListener('click', () => {
       if (!recentVisits.length) return;
       recentVisits = [];
-      storeSet({ [KEYS.recentVisits]: recentVisits });
+      writeStoreInternal({ [KEYS.recentVisits]: recentVisits });
       renderRecentVisitsList();
       showToast('🧹 已清空访问足迹');
     });
@@ -2254,16 +2803,13 @@
         e.stopPropagation();
         const delId = delBtn.getAttribute('data-recent-del-id');
         recentVisits = recentVisits.filter(r => r.id !== delId);
-        storeSet({ [KEYS.recentVisits]: recentVisits });
+        writeStoreInternal({ [KEYS.recentVisits]: recentVisits });
         renderRecentVisitsList();
         return;
       }
       const openItem = e.target.closest('[data-recent-open-url]');
       if (openItem) {
-        const id = openItem.getAttribute('data-recent-open-id');
-        const url = openItem.getAttribute('data-recent-open-url');
-        recordBookmarkVisit(id, url);
-        window.open(url, '_blank', 'noopener,noreferrer');
+        openBookmarkUrl(openItem.getAttribute('data-recent-open-id'), openItem.getAttribute('data-recent-open-url'), e.ctrlKey || e.metaKey);
       }
     });
     document.getElementById('toggleRightPanelBtn')?.addEventListener('click', toggleRightPanel);
@@ -2295,7 +2841,7 @@
       }
     });
 
-    // 4) 底部居中玻璃空间 Dock（点击 + 拖放落点）
+    // 4) 底部居中玻璃空间 Dock
     const dock = document.getElementById('spaceDockBar');
     dock?.addEventListener('click', e => {
       const btn = e.target.closest('[data-dock-space]');
@@ -2303,7 +2849,7 @@
     });
     bindNavDropDelegation(dock);
 
-    // 5) 左侧分组目录（点击 + 分组重命名/删除 + 分组拖拽调序 + 卡片拖入换组）
+    // 5) 左侧分组目录
     const catNav = document.getElementById('categoryNav');
     catNav?.addEventListener('click', e => {
       const opBtn = e.target.closest('[data-group-op]');
@@ -2334,7 +2880,7 @@
     catNav?.addEventListener('dragend', () => { draggedBookmarkId = null; draggedGroupInfo = null; clearAllDragClasses(); });
     bindNavDropDelegation(catNav);
 
-    // 6) 中栏主内容区事件委托（卡片点击、右键、折叠、编辑按钮、拖拽排序、图片加载升清）
+    // 6) 中栏主内容区事件委托（支持 Ctrl+单击 & 鼠标中键后台静默打开）
     const main = document.getElementById('mainContent');
     if (main) {
       main.addEventListener('load', e => {
@@ -2343,6 +2889,16 @@
       main.addEventListener('error', e => {
         if (e.target.tagName === 'IMG' && e.target.classList.contains('icon-img')) handleIconError(e.target);
       }, true);
+
+      main.addEventListener('auxclick', e => {
+        if (e.button !== 1) return;
+        const bmCard = e.target.closest('.bookmark-card[data-bm-id]');
+        if (!bmCard || e.target.closest('.card-action-bar')) return;
+        e.preventDefault();
+        const id = bmCard.getAttribute('data-bm-id');
+        const bm = bookmarks.find(b => b.id === id);
+        openBookmarkUrl(id, bm ? bm.url : bmCard.getAttribute('data-kbd-url'), true);
+      });
 
       main.addEventListener('click', e => {
         const cardAct = e.target.closest('[data-card-action]');
@@ -2360,7 +2916,8 @@
         if (collapseBtn) {
           const key = collapseBtn.getAttribute('data-collapse-key');
           collapsedGroups[key] = !collapsedGroups[key];
-          storeSet({ [KEYS.collapsed]: collapsedGroups });
+          writeStoreInternal({ [KEYS.collapsed]: collapsedGroups });
+          markLocalChangeAndSync();
           renderMainContent();
           return;
         }
@@ -2375,8 +2932,7 @@
         if (bmCard && !e.target.closest('.card-action-bar')) {
           const id = bmCard.getAttribute('data-bm-id');
           const bm = bookmarks.find(b => b.id === id);
-          const url = bm ? bm.url : bmCard.getAttribute('data-kbd-url');
-          if (url) { recordBookmarkVisit(id, url); window.open(url, '_blank', 'noopener,noreferrer'); }
+          openBookmarkUrl(id, bm ? bm.url : bmCard.getAttribute('data-kbd-url'), e.ctrlKey || e.metaKey);
         }
       });
 
@@ -2451,7 +3007,11 @@
     }
 
     // 7) 右栏天气、便签与待办
-    document.getElementById('citySelector')?.addEventListener('change', e => changeWeatherCity(e.target.value, true));
+    document.getElementById('citySelector')?.addEventListener('change', e => changeWeatherCity(e.target.value, true, false));
+    const retryWeather = () => fetchWeatherData(lastWeatherArgs.lat, lastWeatherArgs.lon, lastWeatherArgs.cityName, true);
+    document.getElementById('weatherIcon')?.addEventListener('click', retryWeather);
+    document.getElementById('weatherCityBadge')?.addEventListener('click', retryWeather);
+
     document.getElementById('tabBtnMemo')?.addEventListener('click', () => switchNoteTab('memo'));
     document.getElementById('tabBtnTodo')?.addEventListener('click', () => switchNoteTab('todo'));
     document.getElementById('quickMemoArea')?.addEventListener('input', e => handleMemoInput(e.target.value));
@@ -2515,14 +3075,15 @@
       closeCardContextMenu();
       const bm = bookmarks.find(b => b.id === id);
       if (!bm) return;
-      if (action === 'pin') togglePinBookmark(id);
+      if (action === 'open-bg') openBookmarkUrl(id, bm.url, true);
+      else if (action === 'pin') togglePinBookmark(id);
       else if (action === 'copy') navigator.clipboard.writeText(bm.url).then(() => showToast('📋 网址已复制到剪贴板'));
       else if (action === 'move') openMoveGroupModal(id);
       else if (action === 'edit') openBookmarkModal(id);
       else if (action === 'delete') deleteBookmark(id);
     });
 
-    // 9) 书签、移动分组、数据中心与工具箱弹窗
+    // 9) 书签、移动分组、数据中心与死链体检弹窗
     document.getElementById('bookmarkModal')?.addEventListener('click', e => { if (e.target.id === 'bookmarkModal') closeBookmarkModal(); });
     document.getElementById('closeBookmarkModalBtn')?.addEventListener('click', closeBookmarkModal);
     document.getElementById('cancelBookmarkModalBtn')?.addEventListener('click', closeBookmarkModal);
@@ -2543,8 +3104,39 @@
     document.getElementById('dcExportBtn')?.addEventListener('click', exportData);
     document.getElementById('importFile')?.addEventListener('change', e => { importData(e.target.files?.[0]); e.target.value = ''; });
     document.getElementById('dcScanDupBtn')?.addEventListener('click', scanDuplicateBookmarks);
+    document.getElementById('dcCheckLinksBtn')?.addEventListener('click', checkDeadLinks);
+    document.getElementById('dcMergeDefaultBtn')?.addEventListener('click', mergeMissingDefaultBookmarks);
+    document.getElementById('dcResetUiBtn')?.addEventListener('click', resetUiAndCaches);
+    document.getElementById('dcRestoreSnapshotBtn')?.addEventListener('click', restorePreResetSnapshot);
+    document.getElementById('dcDangerToggleBtn')?.addEventListener('click', () => {
+      const box = document.getElementById('dcDangerBox');
+      const arrow = document.getElementById('dcDangerArrow');
+      if (!box) return;
+      const hidden = box.classList.toggle('hidden');
+      if (arrow) arrow.textContent = hidden ? '▾' : '▴';
+    });
     document.getElementById('dcResetBtn')?.addEventListener('click', resetDefaultData);
+    document.getElementById('dcClearAllBtn')?.addEventListener('click', clearAllLocalBookmarks);
+
     document.getElementById('duplicateReportBox')?.addEventListener('click', e => {
+      if (e.target.closest('[data-dead-stop]')) {
+        if (linkCheckAbortController) { linkCheckAbortController.abort(); linkCheckAbortController = null; }
+        showToast('⏹️ 已停止体检');
+        return;
+      }
+      const openDead = e.target.closest('[data-dead-open-url]');
+      if (openDead) {
+        window.open(openDead.getAttribute('data-dead-open-url'), '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const delDead = e.target.closest('[data-dead-del-id]');
+      if (delDead) {
+        const id = delDead.getAttribute('data-dead-del-id');
+        deleteBookmark(id);
+        document.getElementById('dcTotalCount').textContent = `${bookmarks.length} 个书签`;
+        delDead.closest('.flex.items-center.justify-between')?.remove();
+        return;
+      }
       if (e.target.closest('[data-dup-clean-all]')) {
         const seen = new Set(); let removed = 0;
         bookmarks = bookmarks.filter(bm => { const k = canonicalUrlKey(bm.url); if (seen.has(k)) { removed++; return false; } seen.add(k); return true; });
@@ -2567,10 +3159,45 @@
       }
     });
 
-    // 10) 工具箱弹窗内部委托
+    // 10) 工具箱弹窗内部委托 + 拖拽本地图片导入 + 全局 Ctrl+V 贴图
     document.getElementById('toolModal')?.addEventListener('click', e => { if (e.target.id === 'toolModal') closeToolModal(); });
     document.getElementById('closeToolModalBtn')?.addEventListener('click', closeToolModal);
     const toolBody = document.getElementById('toolModalBody');
+    toolBody?.addEventListener('dragover', e => {
+      const dz = e.target.closest('[data-img-dropzone]');
+      if (dz) { e.preventDefault(); dz.classList.add('nav-drop-target'); }
+    });
+    toolBody?.addEventListener('dragleave', e => {
+      const dz = e.target.closest('[data-img-dropzone]');
+      if (dz && !dz.contains(e.relatedTarget)) dz.classList.remove('nav-drop-target');
+    });
+    toolBody?.addEventListener('drop', e => {
+      const dz = e.target.closest('[data-img-dropzone]');
+      if (!dz) return;
+      e.preventDefault();
+      dz.classList.remove('nav-drop-target');
+      const file = e.dataTransfer?.files?.[0];
+      if (file) loadImageFileToActiveTool(file, dz.getAttribute('data-img-dropzone'));
+    });
+
+    document.addEventListener('paste', e => {
+      if (!['radius', 'palette', 'converter'].includes(currentToolType)) return;
+      const modal = document.getElementById('toolModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            loadImageFileToActiveTool(file, currentToolType);
+            return;
+          }
+        }
+      }
+    });
+
     toolBody?.addEventListener('input', e => {
       const id = e.target.id;
       if (id === 'jsonInput') toolSessionCache.json = e.target.value;
@@ -2585,19 +3212,10 @@
     });
     toolBody?.addEventListener('change', e => {
       const id = e.target.id;
-      if (id === 'radiusFileInput') previewRadiusImage();
-      else if (id === 'paletteFileInput') {
-        const f = e.target.files?.[0]; if (!f) return;
-        const r = new FileReader();
-        r.onload = ev => { const img = new Image(); img.onload = () => { paletteSourceImg = img; drawPaletteImg(img); }; img.src = ev.target.result; };
-        r.readAsDataURL(f);
-      } else if (id === 'convFileInput') {
-        const f = e.target.files?.[0]; if (!f) return;
-        convOriginalName = f.name.replace(/\.[^.]+$/, '') || 'image';
-        const r = new FileReader();
-        r.onload = ev => { const img = new Image(); img.onload = () => { convSourceImg = img; updateConvertedPreview(); }; img.src = ev.target.result; };
-        r.readAsDataURL(f);
-      } else if (id === 'convFormat' || id === 'convScale') updateConvertedPreview();
+      if (id === 'radiusFileInput' && e.target.files?.[0]) loadImageFileToActiveTool(e.target.files[0], 'radius');
+      else if (id === 'paletteFileInput' && e.target.files?.[0]) loadImageFileToActiveTool(e.target.files[0], 'palette');
+      else if (id === 'convFileInput' && e.target.files?.[0]) loadImageFileToActiveTool(e.target.files[0], 'converter');
+      else if (id === 'convFormat' || id === 'convScale') updateConvertedPreview();
       else if (id === 'cgFps') calcCgFramesToTc();
       else if (id === 'cgRatio') calcCgResolution();
     });
@@ -2631,12 +3249,12 @@
       } else if (act === 'text-copy') { navigator.clipboard.writeText(document.getElementById('textToolInput')?.value || ''); showToast('📋 已复制文本'); }
       else if (act === 'radius-download') {
         const c = document.getElementById('radiusCanvas');
-        if (!c || !loadedRadiusImg) { showToast('💡 请先选择图片'); return; }
+        if (!c || !loadedRadiusImg) { showToast('💡 请先选择或粘贴图片'); return; }
         const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'rounded.png'; a.click();
       } else if (act === 'ts-convert') convertTimestamp();
       else if (act === 'palette-copy') { navigator.clipboard.writeText(toolSessionCache.pickedHex); showToast(`🎨 已复制 ${toolSessionCache.pickedHex}`); }
       else if (act === 'conv-download') {
-        if (!convSourceImg) { showToast('💡 请先选择图片'); return; }
+        if (!convSourceImg) { showToast('💡 请先选择或粘贴图片'); return; }
         const c = document.getElementById('convCanvas');
         const fmt = toolSessionCache.convFormat;
         const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[fmt] || 'jpg';
@@ -2647,8 +3265,14 @@
       else if (act === 'pwd-copy') { navigator.clipboard.writeText(document.getElementById('pwdOutput')?.value || ''); showToast('📋 强密码已复制'); }
     });
 
-    // 11) Toast、回到顶部、全局快捷键与滚动
+    // 11) Toast（含撤销操作）、回到顶部、数字键 1-6 切空间、唤醒自动同步
     document.getElementById('toastContainer')?.addEventListener('click', e => {
+      const undoBtn = e.target.closest('[data-toast-undo]');
+      if (undoBtn) {
+        undoLastDelete();
+        undoBtn.closest('.toast-animate')?.remove();
+        return;
+      }
       if (e.target.closest('[data-toast-close]')) e.target.closest('.toast-animate')?.remove();
     });
     document.getElementById('backToTopBtn')?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
@@ -2656,10 +3280,18 @@
     document.addEventListener('keydown', e => {
       const tag = (e.target.tagName || '').toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+      const hasOpenModal = ['bookmarkModal', 'moveGroupModal', 'dataCenterModal', 'toolModal'].some(id => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault(); searchInput?.focus(); searchInput?.select();
-      } else if (e.key === '/' && !isTyping && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      } else if (e.key === '/' && !isTyping && !hasOpenModal && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault(); searchInput?.focus(); searchInput?.select();
+      } else if (!isTyping && !hasOpenModal && !e.ctrlKey && !e.metaKey && !e.altKey && /^[1-6]$/.test(e.key)) {
+        const sp = SPACES_CONFIG[parseInt(e.key, 10) - 1];
+        if (sp) { clearSearchQuiet(); switchSpace(sp.id, 'all'); }
       } else if (e.key === 'Escape') {
         closeBookmarkModal(); closeMoveGroupModal(); closeDataCenterModal();
         closeToolModal(); closeRecentPopover(); closeAccentPopover(); closeCardContextMenu();
@@ -2667,6 +3299,17 @@
     });
 
     document.addEventListener('click', () => { closeRecentPopover(); closeAccentPopover(); closeCardContextMenu(); });
+
+    const checkRemoteOnWake = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (!ghSyncConfig.token || !ghSyncConfig.gistId || !ghSyncConfig.autoSync) return;
+      const now = Date.now();
+      if (now - lastWakePullAt < 60000) return;
+      lastWakePullAt = now;
+      pullFromGist(true);
+    };
+    document.addEventListener('visibilitychange', checkRemoteOnWake);
+    window.addEventListener('focus', checkRemoteOnWake);
 
     const backBtn = document.getElementById('backToTopBtn');
     window.addEventListener('scroll', () => {
@@ -2681,7 +3324,6 @@
     }, { passive: true });
   }
 
-  // 左侧分组与顶部 Dock 的共用拖放委托
   function bindNavDropDelegation(container) {
     if (!container) return;
     container.addEventListener('dragover', e => {
@@ -2731,7 +3373,17 @@
     });
   }
 
-  // ==================== 17. 通用工具函数与 Toast ====================
+  // ==================== 17. 通用工具函数与增强版 Toast（支持撤销按钮） ====================
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function normalizeUrl(url) { return (url || '').trim().replace(/\/$/, '').toLowerCase(); }
   function getOriginAndPath(url) { try { const u = new URL(url); return (u.origin + u.pathname).replace(/\/$/, '').toLowerCase(); } catch { return ''; } }
   function extractDomain(url) { try { return new URL(url).hostname; } catch { return ''; } }
@@ -2740,20 +3392,291 @@
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function showToast(msg) {
+  function showToast(msg, opts = {}) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
     while (container.children.length >= 3) container.firstElementChild.remove();
     const item = document.createElement('div');
     item.className = 'toast-animate specular-card px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-xl border border-indigo-500/30 flex items-center justify-between gap-3 pointer-events-auto';
-    item.innerHTML = `<span>${escapeHtml(msg)}</span><button type="button" data-toast-close="1" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs leading-none px-1">✕</button>`;
+    const actionBtn = opts.label
+      ? `<button type="button" data-toast-undo="1" class="px-2 py-0.5 rounded-lg theme-solid-bg text-white text-[11px] font-bold hover:opacity-90 transition shrink-0">${escapeHtml(opts.label)}</button>`
+      : '';
+    item.innerHTML = `<span>${escapeHtml(msg)}</span><div class="flex items-center gap-1.5 shrink-0">${actionBtn}<button type="button" data-toast-close="1" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs leading-none px-1">✕</button></div>`;
     container.appendChild(item);
+    const delay = opts.duration || 2400;
     setTimeout(() => {
       if (!item.isConnected) return;
       item.style.opacity = '0'; item.style.transform = 'translateY(8px)'; item.style.transition = 'all 0.25s ease';
       setTimeout(() => { if (item.isConnected) item.remove(); }, 250);
-    }, 2400);
+    }, delay);
+  }
+
+  // ==================== 18. GitHub 私有 Gist 后台可靠云同步与冲突保护引擎 ====================
+  const GIST_FILENAME = 'personal_workspace_sync.json';
+
+  function showSyncConflictBanner(info) {
+    const banner = document.getElementById('syncConflictBanner');
+    const text = document.getElementById('syncConflictText');
+    if (!banner) return;
+    const rTime = info?.remoteUpdatedAt ? new Date(info.remoteUpdatedAt).toLocaleString() : '较新时间';
+    if (text) text.textContent = `检测到云端存在另一台设备更新的数据（${rTime}），已暂停覆盖保护数据安全，请选择：`;
+    banner.classList.remove('hidden');
+    updateSyncBadgeUI('conflict');
+  }
+
+  function hideSyncConflictBanner() {
+    document.getElementById('syncConflictBanner')?.classList.add('hidden');
+  }
+
+  function updateSyncBadgeUI(state = 'idle') {
+    const pill = document.getElementById('storageBadgePill');
+    const modalStatus = document.getElementById('ghSyncStatusText');
+    const timeStr = ghSyncConfig.lastSyncAt
+      ? new Date(ghSyncConfig.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    if (pill) {
+      if (state === 'syncing') {
+        pill.textContent = '☁️ 同步中...';
+        pill.className = 'py-2 px-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/25 text-[10px] font-mono font-bold shrink-0 cursor-pointer';
+      } else if (state === 'conflict') {
+        pill.textContent = '⚠️ 发现冲突';
+        pill.className = 'py-2 px-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 text-[10px] font-mono font-bold shrink-0 cursor-pointer';
+      } else if (state === 'error') {
+        pill.textContent = '⚠️ 同步异常';
+        pill.className = 'py-2 px-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 text-[10px] font-mono font-bold shrink-0 cursor-pointer';
+      } else if (ghSyncConfig.token && ghSyncConfig.gistId) {
+        pill.textContent = timeStr ? `☁️ ${timeStr}` : '☁️ 云同步';
+        pill.className = 'py-2 px-2 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-mono font-bold shrink-0 cursor-pointer';
+      } else {
+        pill.textContent = '● 本地存';
+        pill.className = 'py-2 px-2 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-mono font-bold shrink-0 cursor-pointer';
+      }
+    }
+
+    if (modalStatus) {
+      if (state === 'syncing') modalStatus.textContent = '正在连接 GitHub...';
+      else if (state === 'conflict') modalStatus.textContent = '存在双机冲突，请在主页面顶部选择';
+      else if (state === 'error') modalStatus.textContent = '同步失败，请检查网络或 Token';
+      else if (ghSyncConfig.token && ghSyncConfig.gistId) modalStatus.textContent = timeStr ? `上次同步 ${timeStr}` : '已连接私有 Gist';
+      else if (ghSyncConfig.token) modalStatus.textContent = '配置已自动保存 · 待首次上传';
+      else modalStatus.textContent = '未配置';
+    }
+  }
+
+  function populateSyncModalFields() {
+    const tEl = document.getElementById('ghTokenInput');
+    const gEl = document.getElementById('ghGistIdInput');
+    const aEl = document.getElementById('ghAutoSyncToggle');
+    if (tEl) tEl.value = ghSyncConfig.token || '';
+    if (gEl) gEl.value = ghSyncConfig.gistId || '';
+    if (aEl) aEl.checked = ghSyncConfig.autoSync !== false;
+    updateSyncBadgeUI();
+  }
+
+  function saveGhSyncConfigFromModal(notify = true) {
+    ghSyncConfig.token = (document.getElementById('ghTokenInput')?.value || '').trim();
+    ghSyncConfig.gistId = (document.getElementById('ghGistIdInput')?.value || '').trim();
+    ghSyncConfig.autoSync = !!document.getElementById('ghAutoSyncToggle')?.checked;
+    writeStoreInternal({ [KEYS.ghSync]: ghSyncConfig });
+    updateSyncBadgeUI();
+    if (notify) showToast('✅ GitHub 同步配置已保存');
+  }
+
+  function applySyncPayload(data) {
+    if (!data || !Array.isArray(data.bookmarks)) return false;
+    bookmarks = data.bookmarks;
+    if (data.spaceGroups && typeof data.spaceGroups === 'object') {
+      spaceGroups = { ...JSON.parse(JSON.stringify(INITIAL_SPACE_GROUPS)), ...data.spaceGroups };
+    }
+    if (Array.isArray(data.todos)) {
+      todos = data.todos;
+      saveTodos(true);
+      renderTodoList();
+    }
+    if (typeof data.memo === 'string') {
+      const area = document.getElementById('quickMemoArea');
+      if (area) area.value = data.memo;
+      handleMemoInput(data.memo, true);
+    }
+    if (data.settings) {
+      applySettingsPayload(data.settings);
+    }
+    if (currentSpace !== 'home' && currentSpace !== 'tools' && currentGroup !== 'all') {
+      if (!getGroupsForSpace(currentSpace).includes(currentGroup)) currentGroup = 'all';
+    }
+    localUpdatedAt = typeof data.updatedAt === 'number' ? data.updatedAt : Date.now();
+    hydrateOfflineBase64Icons(true);
+    saveCoreState(true);
+    renderSpaceDock();
+    renderSidebarGroups();
+    renderMainContent();
+    return true;
+  }
+
+  function ghHeaders() {
+    return {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${ghSyncConfig.token}`,
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+  }
+
+  function scheduleAutoSync() {
+    if (!ghSyncConfig.token || !ghSyncConfig.autoSync) return;
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => pushToGist(true, false), 1800);
+  }
+
+  async function autoSyncOnStartup() {
+    if (!ghSyncConfig.token || !ghSyncConfig.gistId || !ghSyncConfig.autoSync) return;
+    lastWakePullAt = Date.now();
+    await pullFromGist(true);
+  }
+
+  async function pushToGist(silent = false, force = false) {
+    if (!ghSyncConfig.token) {
+      if (!silent) showToast('💡 请先填写 GitHub Token');
+      return;
+    }
+
+    if (IS_EXTENSION && chrome.runtime && chrome.runtime.sendMessage) {
+      updateSyncBadgeUI('syncing');
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'SYNC_PUSH', force });
+        if (res?.conflict) {
+          showSyncConflictBanner({ remoteUpdatedAt: res.remoteUpdatedAt });
+          showToast('⚠️ 检测到云端有另一台设备的新改动，请先确认处理');
+          return;
+        }
+        if (res?.ok) {
+          hideSyncConflictBanner();
+          if (res.gistId) {
+            ghSyncConfig.gistId = res.gistId;
+            const gEl = document.getElementById('ghGistIdInput');
+            if (gEl) gEl.value = res.gistId;
+          }
+          if (res.updatedAt) {
+            localUpdatedAt = res.updatedAt;
+            ghSyncConfig.lastRemoteUpdatedAt = res.updatedAt;
+          }
+          ghSyncConfig.lastSyncAt = Date.now();
+          updateSyncBadgeUI('idle');
+          if (!silent) {
+            showToast(res.isCreate ? '🎉 已自动创建私有 Gist 并上传！请复制 Gist ID 给另一台电脑' : '☁️ 已成功上传书签与界面配置到私有 Gist');
+          }
+          return;
+        }
+        if (res?.skipped) { updateSyncBadgeUI('idle'); return; }
+        throw new Error(res?.error || '请检查网络');
+      } catch (err) {
+        console.error('后台 Gist 上传失败:', err);
+        updateSyncBadgeUI('error');
+        if (!silent) showToast(`❌ 上传失败：${err.message || '请检查网络'}`);
+      }
+      return;
+    }
+
+    if (isSyncing) { pendingPushAfterSync = true; return; }
+    isSyncing = true;
+    updateSyncBadgeUI('syncing');
+    try {
+      const settings = await collectCurrentSettings();
+      const cleanBookmarks = bookmarks.map(b => {
+        const item = { id: b.id, space: b.space, group: b.group, title: b.title, url: b.url, desc: b.desc };
+        if (b.pinned) item.pinned = true;
+        if (b.customIcon) item.customIcon = b.customIcon;
+        return item;
+      });
+      const nowTs = Math.max(Date.now(), localUpdatedAt);
+      const payload = { version: 11, updatedAt: nowTs, spaceGroups, bookmarks: cleanBookmarks, todos, memo: document.getElementById('quickMemoArea')?.value || '', settings };
+      const isCreate = !ghSyncConfig.gistId;
+      const endpoint = isCreate ? 'https://api.github.com/gists' : `https://api.github.com/gists/${encodeURIComponent(ghSyncConfig.gistId)}`;
+      const body = { description: 'Personal Workspace OS - Private Sync Data (v11)', files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } };
+      if (isCreate) body.public = false;
+
+      const res = await fetchWithTimeout(endpoint, { method: isCreate ? 'POST' : 'PATCH', headers: ghHeaders(), body: JSON.stringify(body) }, 12000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (isCreate && json.id) { ghSyncConfig.gistId = json.id; const gEl = document.getElementById('ghGistIdInput'); if (gEl) gEl.value = json.id; }
+      localUpdatedAt = nowTs;
+      ghSyncConfig.lastSyncAt = Date.now();
+      ghSyncConfig.lastRemoteUpdatedAt = nowTs;
+      writeStoreInternal({ [KEYS.ghSync]: ghSyncConfig, [KEYS.updatedAt]: localUpdatedAt });
+      updateSyncBadgeUI('idle');
+      if (!silent) showToast('☁️ 已成功上传最新数据到 GitHub 私有 Gist');
+    } catch (err) {
+      updateSyncBadgeUI('error');
+      if (!silent) showToast(`❌ 上传失败：${err.message || '请检查网络'}`);
+    } finally {
+      isSyncing = false;
+      if (pendingPushAfterSync) { pendingPushAfterSync = false; pushToGist(true, false); }
+    }
+  }
+
+  async function pullFromGist(onlyIfNewer = false) {
+    if (!ghSyncConfig.token || !ghSyncConfig.gistId) {
+      if (!onlyIfNewer) showToast('💡 请先填写 GitHub Token 和 Gist ID');
+      return;
+    }
+    if (isSyncing) return;
+    isSyncing = true;
+    updateSyncBadgeUI('syncing');
+
+    try {
+      const res = await fetchWithTimeout(`https://api.github.com/gists/${encodeURIComponent(ghSyncConfig.gistId)}`, {
+        headers: ghHeaders(),
+        cache: 'no-store'
+      }, 10000);
+
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Token 无效或已过期');
+        if (res.status === 404) throw new Error('找不到对应的 Gist ID');
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const json = await res.json();
+      const fileObj = json.files?.[GIST_FILENAME] || Object.values(json.files || {}).find(f => f.filename?.endsWith('.json'));
+      if (!fileObj) throw new Error('Gist 中未找到同步数据文件');
+
+      let rawContent = fileObj.content || '';
+      if (fileObj.truncated && fileObj.raw_url) {
+        const rawRes = await fetchWithTimeout(fileObj.raw_url, { cache: 'no-store' }, 10000);
+        rawContent = await rawRes.text();
+      }
+
+      const remoteData = JSON.parse(rawContent);
+      const remoteTime = typeof remoteData.updatedAt === 'number' ? remoteData.updatedAt : 0;
+
+      if (onlyIfNewer && remoteTime <= localUpdatedAt && localUpdatedAt > 0) {
+        ghSyncConfig.lastSyncAt = Date.now();
+        ghSyncConfig.lastRemoteUpdatedAt = Math.max(ghSyncConfig.lastRemoteUpdatedAt || 0, remoteTime);
+        writeStoreInternal({ [KEYS.ghSync]: ghSyncConfig, [KEYS.syncConflict]: null });
+        hideSyncConflictBanner();
+        updateSyncBadgeUI('idle');
+        return;
+      }
+
+      if (applySyncPayload(remoteData)) {
+        ghSyncConfig.lastSyncAt = Date.now();
+        ghSyncConfig.lastRemoteUpdatedAt = remoteTime || localUpdatedAt;
+        writeStoreInternal({ [KEYS.ghSync]: ghSyncConfig, [KEYS.syncConflict]: null });
+        hideSyncConflictBanner();
+        updateSyncBadgeUI('idle');
+        const dcEl = document.getElementById('dcTotalCount');
+        if (dcEl) dcEl.textContent = `${bookmarks.length} 个书签`;
+        showToast(onlyIfNewer ? '☁️ 已自动同步另一台设备的最新更改与偏好' : `☁️ 已从云端拉取 ${bookmarks.length} 个书签与偏好设置`);
+      }
+    } catch (err) {
+      console.error('Gist 拉取失败:', err);
+      updateSyncBadgeUI('error');
+      if (!onlyIfNewer) showToast(`❌ 拉取失败：${err.message || '请检查网络'}`);
+    } finally {
+      isSyncing = false;
+    }
   }
 
   window.addEventListener('DOMContentLoaded', initApp);
 })();
+// ===== [PART 2 END] =====
