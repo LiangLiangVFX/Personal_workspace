@@ -1,6 +1,7 @@
 /* ==========================================================================
-   个人效率工作台 OS — Manifest V3 后台服务引擎 (v11.0)
-   功能：单实例启动 · 右键/Alt+S 收藏 · 地址栏 ws 直搜 · GitHub Gist 后台防漏传队列
+   个人效率工作台 OS — Manifest V3 后台服务引擎 (v11.1)
+   功能：单实例启动 · 右键/Alt+S 收藏(异步抓真实简介) · 地址栏 ws 拼音/多词直搜 ·
+         GitHub Gist 后台防漏传队列与冲突检测
    ========================================================================== */
 
 const KEYS = {
@@ -28,6 +29,40 @@ let bgSyncing = false;
 let bgPendingPush = false;
 let bgForceNext = false;
 
+// ==================== 0. 轻量级拼音首字母引擎（供地址栏 ws 直搜使用） ====================
+const PY_BOUNDARIES = [
+  ['a', '阿'], ['b', '芭'], ['c', '擦'], ['d', '搭'], ['e', '蛾'],
+  ['f', '发'], ['g', '噶'], ['h', '哈'], ['j', '击'], ['k', '喀'],
+  ['l', '垃'], ['m', '妈'], ['n', '拿'], ['o', '哦'], ['p', '啪'],
+  ['q', '期'], ['r', '然'], ['s', '撒'], ['t', '塌'], ['w', '挖'],
+  ['x', '昔'], ['y', '压'], ['z', '匝']
+];
+const zhCollator = typeof Intl !== 'undefined' ? new Intl.Collator('zh-CN') : null;
+const pinyinCache = new Map();
+
+function getPinyinInitials(str) {
+  if (!str || !zhCollator) return '';
+  if (pinyinCache.has(str)) return pinyinCache.get(str);
+  let out = '';
+  for (const ch of str) {
+    if (/[a-zA-Z0-9]/.test(ch)) {
+      out += ch.toLowerCase();
+    } else if (/[\u4e00-\u9fa5]/.test(ch)) {
+      let letter = '';
+      for (let i = PY_BOUNDARIES.length - 1; i >= 0; i--) {
+        if (zhCollator.compare(ch, PY_BOUNDARIES[i][1]) >= 0) {
+          letter = PY_BOUNDARIES[i][0];
+          break;
+        }
+      }
+      out += letter;
+    }
+  }
+  if (pinyinCache.size > 800) pinyinCache.clear();
+  pinyinCache.set(str, out);
+  return out;
+}
+
 // ==================== 1. 工具栏图标单实例启动 ====================
 async function openOrFocusWorkspace(query = '') {
   const baseUrl = chrome.runtime.getURL('index.html');
@@ -51,13 +86,38 @@ async function openOrFocusWorkspace(query = '') {
 
 chrome.action.onClicked.addListener(() => openOrFocusWorkspace());
 
-// ==================== 2. 任意网页右键 & Alt+S 一键收藏 ====================
+// ==================== 2. 任意网页二级右键菜单 & Alt+S 一键收藏 ====================
+const QUICK_SAVE_PARENT_ID = 'ws-quick-save-parent';
+const QUICK_SAVE_MENUS = [
+  { id: 'ws-qs-auto',     title: '⚡ 智能归类（首页可见）', space: 'auto',     pin: false },
+  { id: 'ws-qs-pin',      title: '⭐ 收藏并置顶到首页',     space: 'auto',     pin: true  },
+  { id: 'ws-qs-ai',       title: '🤖 存入 AI 创作',         space: 'ai',       pin: false },
+  { id: 'ws-qs-cg',       title: '🎮 存入 CG & 3D',         space: 'cg',       pin: false },
+  { id: 'ws-qs-media',    title: '🎬 存入 媒体设计',        space: 'media',    pin: false },
+  { id: 'ws-qs-software', title: '📦 存入 软件运维',        space: 'software', pin: false }
+];
+
+const DEFAULT_GROUP_BY_SPACE = {
+  ai: '🧠 对话与搜索',
+  cg: '🎮 UE5 与实时特效',
+  media: '🔥 社区与工作台',
+  software: '💻 绿色软件与脚本'
+};
+
 function registerContextMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: QUICK_SAVE_MENU_ID,
+      id: QUICK_SAVE_PARENT_ID,
       title: '⚡ 收藏到效率工作台',
       contexts: ['page', 'link']
+    });
+    QUICK_SAVE_MENUS.forEach(item => {
+      chrome.contextMenus.create({
+        id: item.id,
+        parentId: QUICK_SAVE_PARENT_ID,
+        title: item.title,
+        contexts: ['page', 'link']
+      });
     });
   });
 }
@@ -109,7 +169,142 @@ function flashBadge(text, color) {
   setTimeout(() => chrome.action.setBadgeText({ text: '' }), 2200);
 }
 
-async function quickSaveUrl(rawUrl, rawTitle = '', favIconUrl = '') {
+async function enrichSavedBookmarkMetadata(bmId, rawUrl, fallbackDesc, isRawUrlTitle) {
+  try {
+    const isPrivate = !rawUrl || /localhost|127\.0\.0\.1|192\.168\.|hzpipeline\.com/i.test(rawUrl);
+    if (isPrivate) return;
+
+    const res = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(rawUrl)}`, { cache: 'no-store' }, 6500);
+    if (!res.ok) return;
+    const json = await res.json();
+    if (!json || json.status !== 'success' || !json.data) return;
+
+    const fetchedTitle = (json.data.title || '').trim();
+    const fetchedDesc = (json.data.description || '').trim();
+    if (!fetchedDesc && (!isRawUrlTitle || !fetchedTitle)) return;
+
+    const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.pendingSaves]);
+    let updated = false;
+
+    const patchList = list => {
+      if (!Array.isArray(list)) return false;
+      const item = list.find(b => b.id === bmId);
+      if (!item) return false;
+      if (fetchedDesc && item.desc === fallbackDesc) {
+        item.desc = fetchedDesc.length > 92 ? fetchedDesc.slice(0, 92) + '...' : fetchedDesc;
+        updated = true;
+      }
+      if (isRawUrlTitle && fetchedTitle) {
+        item.title = fetchedTitle.length > 44 ? fetchedTitle.slice(0, 44) : fetchedTitle;
+        updated = true;
+      }
+      return updated;
+    };
+
+    if (patchList(saved[KEYS.bookmarks])) {
+      await chrome.storage.local.set({
+        [KEYS.bookmarks]: saved[KEYS.bookmarks],
+        [KEYS.updatedAt]: Date.now()
+      });
+      triggerBackgroundPush(false);
+    } else if (patchList(saved[KEYS.pendingSaves])) {
+      await chrome.storage.local.set({ [KEYS.pendingSaves]: saved[KEYS.pendingSaves] });
+    }
+  } catch {}
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function fetchIconAsDataUrlInBg(url) {
+  const res = await fetchWithTimeout(url, { cache: 'no-store' }, 5000);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const blob = await res.blob();
+  if (!blob || blob.size < 60) throw new Error('empty');
+  const mime = (blob.type || '').toLowerCase();
+  if (mime && !mime.startsWith('image/') && !mime.includes('icon') && mime !== 'application/octet-stream') {
+    throw new Error('not-image');
+  }
+  if (mime.includes('svg') && blob.size <= 16384) {
+    return `data:image/svg+xml;base64,${arrayBufferToBase64(await blob.arrayBuffer())}`;
+  }
+  if (typeof createImageBitmap === 'function' && typeof OffscreenCanvas === 'function') {
+    const bmp = await createImageBitmap(blob);
+    try {
+      if (bmp.width < 16 || bmp.height < 16) throw new Error('too-small');
+      const scale = Math.min(1, 64 / Math.max(bmp.width, bmp.height));
+      const w = Math.max(16, Math.round(bmp.width * scale));
+      const h = Math.max(16, Math.round(bmp.height * scale));
+      const canvas = new OffscreenCanvas(w, h);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(bmp, 0, 0, w, h);
+      const webpBlob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.88 });
+      return `data:image/webp;base64,${arrayBufferToBase64(await webpBlob.arrayBuffer())}`;
+    } finally {
+      bmp.close();
+    }
+  }
+  if (blob.size <= 32768) {
+    return `data:${mime || 'image/png'};base64,${arrayBufferToBase64(await blob.arrayBuffer())}`;
+  }
+  throw new Error('too-large');
+}
+
+async function cacheQuickSaveIconBg(bmId, rawUrl, favIconUrl = '') {
+  let host = '';
+  try { host = new URL(rawUrl).hostname.toLowerCase(); } catch {}
+  const isPrivate = !host || /hzpipeline\.com|192\.168\.|127\.0\.0\.1|localhost/i.test(host);
+
+  const orderedTry = [];
+  if (favIconUrl && /^https?:\/\//i.test(favIconUrl)) orderedTry.push(favIconUrl);
+  orderedTry.push(chrome.runtime.getURL(`/_favicon/?pageUrl=${encodeURIComponent(rawUrl)}&size=64`));
+  if (!isPrivate) {
+    const ts = Date.now();
+    orderedTry.push(
+      `https://www.google.com/s2/favicons?domain=${host}&sz=128&_t=${ts}`,
+      `https://api.iowen.cn/favicon/${host}.png?_t=${ts}`,
+      `https://favicon.im/${host}?larger=true&_t=${ts}`
+    );
+  }
+
+  let dataUrl = '';
+  for (const src of orderedTry) {
+    try {
+      dataUrl = await fetchIconAsDataUrlInBg(src);
+      if (dataUrl) break;
+    } catch {}
+  }
+  if (!dataUrl) return;
+
+  const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.pendingSaves]);
+  const patchList = list => {
+    if (!Array.isArray(list)) return false;
+    const item = list.find(b => b.id === bmId);
+    if (!item) return false;
+    item.customIcon = dataUrl;
+    return true;
+  };
+
+  if (patchList(saved[KEYS.bookmarks])) {
+    await chrome.storage.local.set({
+      [KEYS.bookmarks]: saved[KEYS.bookmarks],
+      [KEYS.updatedAt]: Date.now()
+    });
+    triggerBackgroundPush(false);
+  } else if (patchList(saved[KEYS.pendingSaves])) {
+    await chrome.storage.local.set({ [KEYS.pendingSaves]: saved[KEYS.pendingSaves] });
+  }
+}
+
+async function quickSaveUrl(rawUrl, rawTitle = '', favIconUrl = '', opts = {}) {
   if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
     flashBadge('!', '#f43f5e');
     return;
@@ -117,25 +312,46 @@ async function quickSaveUrl(rawUrl, rawTitle = '', favIconUrl = '') {
 
   let host = '';
   try { host = new URL(rawUrl).hostname.replace(/^www\./, ''); } catch {}
+  const isRawUrlTitle = !rawTitle || /^https?:\/\//i.test(rawTitle.trim());
   const cleanTitle = (rawTitle || host || '新建书签').trim().slice(0, 48);
-  const { space, group } = inferSpaceAndGroup(rawUrl, cleanTitle);
 
   const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.spaceGroups, KEYS.pendingSaves]);
   const list = Array.isArray(saved[KEYS.bookmarks]) ? saved[KEYS.bookmarks] : [];
+  const groups = (saved[KEYS.spaceGroups] && typeof saved[KEYS.spaceGroups] === 'object') ? saved[KEYS.spaceGroups] : {};
+
+  let { space, group } = inferSpaceAndGroup(rawUrl, cleanTitle);
+  if (opts.space && opts.space !== 'auto' && DEFAULT_GROUP_BY_SPACE[opts.space]) {
+    space = opts.space;
+    group = (Array.isArray(groups[space]) && groups[space][0]) || DEFAULT_GROUP_BY_SPACE[space];
+  }
 
   const newKey = canonicalUrlKey(rawUrl);
-  if (list.some(b => canonicalUrlKey(b.url) === newKey)) {
+  const existing = list.find(b => canonicalUrlKey(b.url) === newKey);
+  if (existing) {
+    existing.quickSavedAt = Date.now();
+    if (opts.pin) existing.pinned = true;
+    await chrome.storage.local.set({
+      [KEYS.bookmarks]: list,
+      ws_v11_last_quick_save: { title: existing.title, space: existing.space, group: existing.group, existed: true, savedAt: Date.now() }
+    });
     flashBadge('已存', '#f59e0b');
+    if (!existing.customIcon || /^https?:\/\//i.test(existing.customIcon)) {
+      cacheQuickSaveIconBg(existing.id, rawUrl, favIconUrl);
+    }
     return;
   }
 
+  const nowTs = Date.now();
+  const fallbackDesc = `${cleanTitle} (${host || 'Web'}) 快速收藏站点`;
   const newBm = {
-    id: 'bm_' + Date.now(),
+    id: 'bm_' + nowTs,
     space,
     group,
     title: cleanTitle,
     url: rawUrl,
-    desc: `${cleanTitle} (${host || 'Web'}) 快速收藏站点`,
+    desc: fallbackDesc,
+    pinned: !!opts.pin || undefined,
+    quickSavedAt: nowTs,
     customIcon: favIconUrl && /^https?:\/\//i.test(favIconUrl) ? favIconUrl : undefined
   };
 
@@ -144,39 +360,44 @@ async function quickSaveUrl(rawUrl, rawTitle = '', favIconUrl = '') {
     pending.unshift(newBm);
     await chrome.storage.local.set({ [KEYS.pendingSaves]: pending });
     flashBadge('✓', '#10b981');
+    enrichSavedBookmarkMetadata(newBm.id, rawUrl, fallbackDesc, isRawUrlTitle);
+    cacheQuickSaveIconBg(newBm.id, rawUrl, favIconUrl);
     return;
   }
 
   list.unshift(newBm);
-  const groups = (saved[KEYS.spaceGroups] && typeof saved[KEYS.spaceGroups] === 'object') ? saved[KEYS.spaceGroups] : {};
   if (!Array.isArray(groups[space])) groups[space] = [];
   if (!groups[space].includes(group)) groups[space].push(group);
 
   await chrome.storage.local.set({
     [KEYS.bookmarks]: list,
     [KEYS.spaceGroups]: groups,
-    [KEYS.updatedAt]: Date.now()
+    [KEYS.updatedAt]: nowTs,
+    ws_v11_last_quick_save: { title: cleanTitle, space, group, existed: false, savedAt: nowTs }
   });
 
   flashBadge('✓', '#10b981');
   triggerBackgroundPush(false);
+  enrichSavedBookmarkMetadata(newBm.id, rawUrl, fallbackDesc, isRawUrlTitle);
+  cacheQuickSaveIconBg(newBm.id, rawUrl, favIconUrl);
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== QUICK_SAVE_MENU_ID) return;
+  const menuCfg = QUICK_SAVE_MENUS.find(m => m.id === info.menuItemId);
+  if (!menuCfg) return;
   const url = info.linkUrl || info.pageUrl || tab?.url || '';
   const title = info.linkUrl ? (info.selectionText || info.linkUrl) : (tab?.title || '');
   const icon = info.linkUrl ? '' : (tab?.favIconUrl || '');
-  quickSaveUrl(url, title, icon);
+  quickSaveUrl(url, title, icon, { space: menuCfg.space, pin: menuCfg.pin });
 });
 
 chrome.commands.onCommand.addListener(async command => {
   if (command !== 'quick-save-tab') return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.url) quickSaveUrl(tab.url, tab.title || '', tab.favIconUrl || '');
+  if (tab?.url) quickSaveUrl(tab.url, tab.title || '', tab.favIconUrl || '', { space: 'auto', pin: false });
 });
 
-// ==================== 3. 地址栏 ws 直搜书签 (Omnibox) ====================
+// ==================== 3. 地址栏 ws 直搜书签（支持拼音首字母 + 多词空格 AND 匹配） ====================
 function escapeXml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
@@ -187,11 +408,12 @@ function escapeXml(str) {
 }
 
 chrome.omnibox.setDefaultSuggestion({
-  description: '⚡ 在个人效率工作台中搜索书签: <match>%s</match>'
+  description: '⚡ 在个人效率工作台中搜索书签（支持拼音首字母与多词空格组合）: <match>%s</match>'
 });
 
 chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
-  const q = (text || '').trim().toLowerCase();
+  const rawQ = (text || '').trim().toLowerCase();
+  const tokens = rawQ ? rawQ.split(/\s+/).filter(Boolean) : [];
   const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.recentVisits]);
   const bms = Array.isArray(saved[KEYS.bookmarks]) ? saved[KEYS.bookmarks] : [];
   const visits = Array.isArray(saved[KEYS.recentVisits]) ? saved[KEYS.recentVisits] : [];
@@ -203,18 +425,33 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
       const desc = (b.desc || '').toLowerCase();
       const url = (b.url || '').toLowerCase();
       const group = (b.group || '').toLowerCase();
+      const titlePy = getPinyinInitials(b.title || '');
+      const descPy = getPinyinInitials(b.desc || '');
+      const groupPy = getPinyinInitials(b.group || '');
+
       let score = 0;
-      if (!q) {
+      if (tokens.length === 0) {
         score = (b.pinned ? 50 : 0) + (visitCountMap.get(b.id) || 0) * 5;
       } else {
-        if (title.includes(q)) score += 100;
-        if (url.includes(q)) score += 60;
-        if (desc.includes(q) || group.includes(q)) score += 30;
-        if (score > 0) score += Math.min(40, (visitCountMap.get(b.id) || 0) * 4);
+        for (const tk of tokens) {
+          let tkScore = 0;
+          if (title === tk) tkScore += 200;
+          else if (title.startsWith(tk)) tkScore += 140;
+          else if (title.includes(tk)) tkScore += 100;
+          else if (titlePy.includes(tk)) tkScore += 85;
+
+          if (url.includes(tk)) tkScore += 65;
+          if (desc.includes(tk) || group.includes(tk)) tkScore += 35;
+          else if (descPy.includes(tk) || groupPy.includes(tk)) tkScore += 25;
+
+          if (tkScore === 0) return null; // 多词严格 AND 匹配
+          score += tkScore;
+        }
+        score += Math.min(50, (visitCountMap.get(b.id) || 0) * 5) + (b.pinned ? 15 : 0);
       }
-      return { b, score };
+      return score > 0 ? { b, score } : null;
     })
-    .filter(item => item.score > 0)
+    .filter(Boolean)
     .sort((a, b) => b.score - a.score)
     .slice(0, 8);
 
@@ -277,7 +514,6 @@ async function executeBackgroundPush(force = false) {
 
   const headers = buildGhHeaders(cfg.token);
 
-  // 1) 冲突保护：非强制覆盖且已绑定 Gist 时，先读取云端时间戳防止覆盖另一台电脑的新改动
   if (!force && cfg.gistId) {
     try {
       const checkRes = await fetchWithTimeout(
@@ -311,15 +547,15 @@ async function executeBackgroundPush(force = false) {
         }
       }
     } catch {
-      // 检查接口网络异常时交由后续 PATCH 统一处理报错
+      // 网络波动交由后续 PATCH 统一上报
     }
   }
 
-  // 2) 打包精简同步体（含全部界面偏好设置，自动剥离书签离线 Base64 图标）
   const cleanBookmarks = rawBms.map(b => {
     const item = { id: b.id, space: b.space, group: b.group, title: b.title, url: b.url, desc: b.desc };
     if (b.pinned) item.pinned = true;
-    if (b.customIcon) item.customIcon = b.customIcon;
+    if (b.quickSavedAt) item.quickSavedAt = b.quickSavedAt;
+    if (b.customIcon && b.customIcon.length <= 40000) item.customIcon = b.customIcon;
     return item;
   });
 
@@ -329,7 +565,7 @@ async function executeBackgroundPush(force = false) {
 
   const nowTs = Math.max(Date.now(), typeof saved[KEYS.updatedAt] === 'number' ? saved[KEYS.updatedAt] : 0);
   const payload = {
-    version: 11,
+    version: 11.1,
     updatedAt: nowTs,
     spaceGroups: saved[KEYS.spaceGroups] || {},
     bookmarks: cleanBookmarks,
@@ -351,7 +587,7 @@ async function executeBackgroundPush(force = false) {
     : `https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`;
 
   const body = {
-    description: 'Personal Workspace OS - Private Sync Data (v11)',
+    description: 'Personal Workspace OS - Private Sync Data (v11.1)',
     files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } }
   };
   if (isCreate) body.public = false;

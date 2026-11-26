@@ -940,3 +940,23 @@ button:focus, select:focus { outline: none !important; box-shadow: none !importa
   .\32xl\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .\32xl\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
+
+/* ==========================================================
+   6. v11.1 补充样式类（智能合并、多图批处理队列、死链分级标签）
+   ========================================================== */
+.max-h-28 { max-height: 7rem; }
+.max-h-32 { max-height: 8rem; }
+.hover\:bg-emerald-500:hover { background-color: #10b981; }
+.hover\:bg-emerald-600:hover { background-color: #059669; }
+.bg-emerald-500\/15 { background-color: rgba(16, 185, 129, 0.15); }
+.text-emerald-600 { color: #059669; }
+.dark .dark\:text-emerald-400 { color: #34d399; }
+.bg-cyan-500\/10 { background-color: rgba(6, 182, 212, 0.10); }
+.border-cyan-500\/20 { border-color: rgba(6, 182, 212, 0.20); }
+.text-cyan-600 { color: #0891b2; }
+.dark .dark\:text-cyan-300 { color: #67e8f9; }
+.batch-chip-active {
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}

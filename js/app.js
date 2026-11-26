@@ -1,5 +1,7 @@
 /* ==========================================================================
-   个人效率工作台 & 全景书签导航 OS — Manifest V3 纯离线扩展核心引擎 (v11.0 最终版)
+   个人效率工作台 & 全景书签导航 OS — Manifest V3 纯离线扩展核心引擎 (v11.1)
+   升级：冲突无损智能合并 · 便签写盘防抖 · 多词空格+拼音加权检索 ·
+         单站图标右键强制刷新 · 圆角/格式转换多图批处理 · 死链分级体检
    ========================================================================== */
 
 (() => {
@@ -34,10 +36,10 @@
   const BUILTIN_TOOLS = [
     { id: 'tool-json', title: 'JSON 格式化 / 压缩校验', desc: '纯浏览器本地校验、美化缩进与单行压缩 JSON 数据，支持一键复制结果', icon: '📋', type: 'json' },
     { id: 'tool-text', title: '字数统计 & 文本按行去重', desc: '实时统计总字符、中文字数、英文单词与行数，支持一键按行去重与清理空行', icon: '📝', type: 'text' },
-    { id: 'tool-radius', title: '本地图片圆角合成器', desc: '支持 Ctrl+V 粘贴截图与拖拽图片，基于 Canvas 纯本地合成透明圆角 PNG', icon: '🖼️', type: 'radius' },
+    { id: 'tool-radius', title: '本地图片圆角合成器（支持批处理）', desc: '支持多图拖拽、多选与 Ctrl+V 贴图，基于 Canvas 纯本地批量导出透明圆角 PNG', icon: '🖼️', type: 'radius' },
     { id: 'tool-time', title: '时间戳 & UE5 材质颜色转换', desc: 'Unix 时间戳互转、HEX 转 RGB 及 UE5 Material 线性浮点 (0.0~1.0) 颜色换算', icon: '⏱️', type: 'time' },
     { id: 'tool-palette', title: '图片吸管取色 & 主色聚类调色板', desc: '支持 Ctrl+V 粘贴/拖拽原画，吸取 UE5 线性色值并智能聚类提取 6 大主色调', icon: '🎨', type: 'palette' },
-    { id: 'tool-converter', title: '本地图片格式转换 & 压缩', desc: '支持 Ctrl+V 粘贴/拖拽图片，纯本地互转 WebP/PNG/JPG 并实时调节尺寸与体积', icon: '🔄', type: 'converter' },
+    { id: 'tool-converter', title: '本地图片格式转换 & 批量压缩', desc: '支持多图拖入与 Ctrl+V 贴图，纯本地批量互转 WebP/PNG/JPG 并调节画质尺寸', icon: '🔄', type: 'converter' },
     { id: 'tool-cgcalc', title: 'CG 帧率时间码 & 分辨率计算', desc: '动画帧数(Frames)与时间码(24/25/30/60fps)互转，以及 16:9 / 21:9 画幅像素换算', icon: '🎬', type: 'cgcalc' },
     { id: 'tool-codec', title: '编码加解密 & 强密码生成', desc: '基于标准 UTF-8 的 Base64 / URL 编解码与高强度随机安全密钥一键生成', icon: '🔐', type: 'codec' }
   ];
@@ -68,6 +70,7 @@
   // ==================== 3. Chrome 扩展存储适配层 ====================
   const IS_EXTENSION = typeof chrome !== 'undefined' && !!(chrome.storage && chrome.storage.local);
   const DEFAULT_WEATHER_CITY = '39.9042,116.4074,北京';
+  const PRE_RESET_SNAPSHOT_KEY = 'ws_v11_pre_reset_snapshot';
   const KEYS = {
     bookmarks: 'ws_v10_bookmarks',
     spaceGroups: 'ws_v10_space_groups',
@@ -118,7 +121,7 @@
   // ==================== 4. 搜索引擎、拼音首字母引擎与运行时状态 ====================
   const ENGINE_ORDER = ['local', 'google', 'bing', 'github', 'bilibili', 'taobao', 'jd'];
   const SEARCH_ENGINES = {
-    local:    { name: '站内书签', btnText: '筛选', placeholder: '输入关键词或拼音首字母检索（按 / 聚焦 · Tab 切引擎 · 1-6 切空间 · Ctrl+点击后台打开）...', url: '' },
+    local:    { name: '站内书签', btnText: '筛选', placeholder: '输入多词(空格分隔)或拼音首字母检索（/ 聚焦 · Tab 切引擎 · 1-6 切空间 · Ctrl+点击后台打开）...', url: '' },
     google:   { name: 'Google',   btnText: 'Google 搜索', placeholder: '在 Google 中搜索全球技术文档、UE5 资料与 CG 教程，按回车直达...', url: 'https://www.google.com/search?q=' },
     bing:     { name: 'Bing',     btnText: '必应搜索', placeholder: '在微软 Bing 中搜索全球网页与技术资料，按回车直达...', url: 'https://cn.bing.com/search?q=' },
     github:   { name: 'GitHub',   btnText: '搜开源项目', placeholder: '在 GitHub 检索开源项目、ComfyUI 自定义节点与实用脚本...', url: 'https://github.com/search?q=' },
@@ -193,6 +196,7 @@
   let localUpdatedAt = 0;
   let autoSyncTimer = null;
   let configSaveTimer = null;
+  let memoWriteTimer = null;
   let isSyncing = false;
   let pendingPushAfterSync = false;
   let lastWakePullAt = 0;
@@ -201,6 +205,7 @@
   const offlineIconMapByUrl = new Map();
   const offlineIconMapByHost = new Map();
   const hdUpgradedCache = new Map();
+  const iconBustMap = new Map();
   const spotlightBoundSet = new WeakSet();
 
   const toolSessionCache = {
@@ -222,10 +227,13 @@
     codec: '',
     pwd: ''
   };
-  let loadedRadiusImg = null;
+
+  // 多图批处理队列状态（圆角合成器 & 格式转换器）
+  let radiusBatchItems = [];
+  let radiusActiveIdx = 0;
+  let convBatchItems = [];
+  let convActiveIdx = 0;
   let paletteSourceImg = null;
-  let convSourceImg = null;
-  let convOriginalName = 'converted';
 
   // ==================== 5. 初始化生命周期 ====================
   async function initApp() {
@@ -340,6 +348,11 @@
         const cf = changes[KEYS.syncConflict].newValue;
         if (cf) showSyncConflictBanner(cf);
         else hideSyncConflictBanner();
+      }
+      if (changes.ws_v11_last_quick_save?.newValue) {
+        const qs = changes.ws_v11_last_quick_save.newValue;
+        const spName = SPACES_CONFIG.find(s => s.id === qs.space)?.name || qs.space;
+        showToast(qs.existed ? `💡 「${qs.title}」已在「${spName} · ${qs.group}」` : `⚡ 已收藏「${qs.title}」至「${spName} · ${qs.group}」`, { duration: 4000 });
       }
       if (needRender) {
         renderSpaceDock();
@@ -468,7 +481,7 @@
     }
   }
 
-  // ==================== 7. 双层渐进式超清图标引擎 ====================
+  // ==================== 7. 双层渐进式超清图标引擎（支持单站右键强制刷新） ====================
   const BROKEN_BASE64_HOSTS = new Set(['photomosh.com', 'www.world-creator.com', 'www.pbrmax.cn']);
 
   function buildOfflineIconMaps() {
@@ -498,6 +511,7 @@
   function hydrateOfflineBase64Icons(skipSync = true) {
     let updated = false;
     bookmarks.forEach(bm => {
+      if (iconBustMap.has(bm.id)) return;
       const matched = findOfflineBase64(bm.url);
       if (matched && bm.icon !== matched && !bm.customIcon) {
         bm.icon = matched;
@@ -519,18 +533,28 @@
   function getHighDefIconInfo(bm) {
     const host = extractDomain(bm.url).toLowerCase();
     const cleanHost = host.replace(/^www\./, '');
-    if (bm.customIcon) return { primarySrc: bm.customIcon, hd1: '', hd2: '', fb1: '', host };
+    const bustTs = iconBustMap.get(bm.id);
 
-    for (const [domainKey, svgDataUri] of Object.entries(OFFICIAL_BRAND_SVGS)) {
-      if (cleanHost === domainKey || cleanHost.endsWith('.' + domainKey)) {
-        return { primarySrc: svgDataUri, hd1: '', hd2: '', fb1: '', host };
+    if (bm.customIcon && !bustTs) return { primarySrc: bm.customIcon, hd1: '', hd2: '', fb1: '', host };
+
+    if (!bustTs) {
+      for (const [domainKey, svgDataUri] of Object.entries(OFFICIAL_BRAND_SVGS)) {
+        if (cleanHost === domainKey || cleanHost.endsWith('.' + domainKey)) {
+          return { primarySrc: svgDataUri, hd1: '', hd2: '', fb1: '', host };
+        }
       }
     }
 
     const isPrivateHost = !host || host.includes('hzpipeline.com') || host.includes('192.168.');
-    const favImHd = !isPrivateHost ? `https://favicon.im/${host}?larger=true` : '';
-    const googleHd = !isPrivateHost ? `https://www.google.com/s2/favicons?domain=${host}&sz=128` : '';
-    const iowenHd = !isPrivateHost ? `https://api.iowen.cn/favicon/${host}.png` : '';
+    const suffix = bustTs ? `&_t=${bustTs}` : '';
+    const iowenSuffix = bustTs ? `?_t=${bustTs}` : '';
+    const favImHd = !isPrivateHost ? `https://favicon.im/${host}?larger=true${suffix}` : '';
+    const googleHd = !isPrivateHost ? `https://www.google.com/s2/favicons?domain=${host}&sz=128${suffix}` : '';
+    const iowenHd = !isPrivateHost ? `https://api.iowen.cn/favicon/${host}.png${iowenSuffix}` : '';
+
+    if (bustTs) {
+      return { primarySrc: favImHd || googleHd, hd1: '', hd2: iowenHd, fb1: googleHd || findOfflineBase64(bm.url), host };
+    }
 
     if (hdUpgradedCache.has(host)) {
       return { primarySrc: hdUpgradedCache.get(host), hd1: '', hd2: '', fb1: findOfflineBase64(bm.url), host };
@@ -538,7 +562,7 @@
 
     const offlineBase64 = (bm.icon && bm.icon.startsWith('data:image')) ? bm.icon : findOfflineBase64(bm.url);
     if (offlineBase64) return { primarySrc: offlineBase64, hd1: favImHd, hd2: googleHd, fb1: iowenHd, host };
-    return { primarySrc: favImHd || googleHd, hd1: '', hd2: '', fb1: googleHd || iowenHd, host };
+    return { primarySrc: favImHd || googleHd, hd1: '', hd2: iowenHd, fb1: googleHd || iowenHd, host };
   }
 
   function handleIconLoad(imgEl) {
@@ -673,8 +697,10 @@
       const recentCount = recentVisits.filter(r => bookmarks.some(b => b.id === r.id)).length;
       if (badge) badge.textContent = bookmarks.length;
 
+      const quickSavedCount = bookmarks.filter(b => b.quickSavedAt).length;
       const homeItems = [
         { key: 'all', icon: '⚡', label: '聚焦总览 (置顶+高频)', count: pinnedCount, droppablePin: false },
+        { key: 'quick', icon: '📥', label: '最近快捷收藏', count: quickSavedCount, droppablePin: false },
         { key: 'pinned', icon: '⭐', label: '常用置顶站点', count: pinnedCount, droppablePin: true },
         { key: 'recent', icon: '🕒', label: '最近高频访问', count: recentCount, droppablePin: false },
         { key: 'everything', icon: '📚', label: `全站 ${bookmarks.length} 书签汇总`, count: bookmarks.length, droppablePin: false }
@@ -828,7 +854,7 @@
     showToast(`🗑️ 已删除分组「${groupName}」`);
   }
 
-  // ==================== 9. 主内容区渲染（含拼音首字母 + 高频加权检索） ====================
+  // ==================== 9. 主内容区渲染（多词空格 AND + 拼音首字母 + 高频加权检索） ====================
   function getCardGridClass() {
     return isRightPanelCollapsed
       ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3.5'
@@ -836,7 +862,8 @@
   }
 
   function searchBookmarksWeighted(query) {
-    const q = query.trim().toLowerCase();
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return [];
     const visitMap = new Map(recentVisits.map(r => [r.id, r.count || 1]));
 
     return bookmarks
@@ -850,16 +877,21 @@
         const groupPy = getPinyinInitials(bm.group || '');
 
         let score = 0;
-        if (title === q) score += 200;
-        else if (title.startsWith(q)) score += 140;
-        else if (title.includes(q)) score += 100;
-        else if (titlePy.includes(q)) score += 85;
+        for (const tk of tokens) {
+          let tkScore = 0;
+          if (title === tk) tkScore += 200;
+          else if (title.startsWith(tk)) tkScore += 140;
+          else if (title.includes(tk)) tkScore += 100;
+          else if (titlePy.includes(tk)) tkScore += 85;
 
-        if (url.includes(q)) score += 65;
-        if (desc.includes(q) || group.includes(q)) score += 35;
-        else if (descPy.includes(q) || groupPy.includes(q)) score += 25;
+          if (url.includes(tk)) tkScore += 65;
+          if (desc.includes(tk) || group.includes(tk)) tkScore += 35;
+          else if (descPy.includes(tk) || groupPy.includes(tk)) tkScore += 25;
 
-        if (score === 0) return null;
+          if (tkScore === 0) return null; // 多关键词严格 AND 匹配
+          score += tkScore;
+        }
+
         score += Math.min(60, (visitMap.get(bm.id) || 0) * 6) + (bm.pinned ? 18 : 0);
         return { bm, score };
       })
@@ -868,30 +900,47 @@
       .map(item => item.bm);
   }
 
-  function createBookmarkCardHtml(bm) {
+  function createBookmarkCardHtml(bm, opts = {}) {
     const host = extractDomain(bm.url);
     const firstChar = ((bm.title || host || 'W').replace(/[^\w\u4e00-\u9fa5]/g, '')[0] || '⚡').toUpperCase();
     const gradClass = SPACE_GRAD_MAP[bm.space] || 'from-indigo-500 to-purple-600';
     const { primarySrc, hd1, hd2, fb1 } = getHighDefIconInfo(bm);
     const safeUrl = escapeHtml(bm.url || '#');
     const safeId = escapeHtml(bm.id);
+    const isQuickSection = !!opts.isQuickSection;
 
-    const editActionsHtml = isEditMode ? `
-      <div class="card-action-bar mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-1 relative z-20">
-        <div class="flex items-center gap-1">
-          <button type="button" data-card-action="pin" data-bm-id="${safeId}" title="${bm.pinned ? '取消首页置顶' : '置顶到首页聚焦'}" class="px-1.5 py-1 rounded-lg ${bm.pinned ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-amber-500'} text-[11px] font-bold transition">
-            ${bm.pinned ? '⭐' : '☆'}
-          </button>
-          <button type="button" data-card-action="move" data-bm-id="${safeId}" title="移动到其他空间或分组" class="px-2 py-1 rounded-lg bg-indigo-500/12 hover:bg-indigo-500 hover:text-white text-[11px] font-semibold text-indigo-500 dark:text-indigo-300 transition flex items-center gap-0.5">
-            <span>📂</span><span>移动</span>
-          </button>
+    let footerHtml = '';
+    if (isEditMode) {
+      footerHtml = `
+        <div class="card-action-bar mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-1 relative z-20">
+          <div class="flex items-center gap-1">
+            <button type="button" data-card-action="pin" data-bm-id="${safeId}" title="${bm.pinned ? '取消首页置顶' : '置顶到首页聚焦'}" class="px-1.5 py-1 rounded-lg ${bm.pinned ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-amber-500'} text-[11px] font-bold transition">
+              ${bm.pinned ? '⭐' : '☆'}
+            </button>
+            <button type="button" data-card-action="move" data-bm-id="${safeId}" title="移动到其他空间或分组" class="px-2 py-1 rounded-lg bg-indigo-500/12 hover:bg-indigo-500 hover:text-white text-[11px] font-semibold text-indigo-500 dark:text-indigo-300 transition flex items-center gap-0.5">
+              <span>📂</span><span>移动</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-1">
+            ${isQuickSection ? `<button type="button" data-card-action="dismiss-quick" data-bm-id="${safeId}" title="仅移出快捷收藏列表，不删除书签" class="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-[11px] font-semibold text-emerald-500 transition">✓ 移出</button>` : ''}
+            <button type="button" data-card-action="edit" data-bm-id="${safeId}" class="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-white text-[11px] font-semibold text-amber-600 dark:text-amber-400 transition">编辑</button>
+            <button type="button" data-card-action="delete" data-bm-id="${safeId}" class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white text-[11px] font-semibold text-rose-600 dark:text-rose-400 transition">删除</button>
+          </div>
         </div>
-        <div class="flex items-center gap-1">
-          <button type="button" data-card-action="edit" data-bm-id="${safeId}" class="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-white text-[11px] font-semibold text-amber-600 dark:text-amber-400 transition">编辑</button>
-          <button type="button" data-card-action="delete" data-bm-id="${safeId}" class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white text-[11px] font-semibold text-rose-600 dark:text-rose-400 transition">删除</button>
+      `;
+    } else if (isQuickSection) {
+      const spObj = SPACES_CONFIG.find(s => s.id === bm.space);
+      const locLabel = `${spObj ? spObj.icon : '📁'} ${bm.group || ''}`.trim();
+      footerHtml = `
+        <div class="card-action-bar mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between gap-2 relative z-20">
+          <span class="text-[10px] text-slate-400 truncate" title="存放位置：${escapeHtml(locLabel)}">${escapeHtml(locLabel)}</span>
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" data-card-action="move" data-bm-id="${safeId}" title="移动到其他空间或分组" class="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-indigo-500 hover:text-white dark:bg-slate-800 text-[10px] font-semibold text-slate-500 dark:text-slate-300 transition">📂 换组</button>
+            <button type="button" data-card-action="dismiss-quick" data-bm-id="${safeId}" title="移出快捷收藏（书签仍保留在原分组）" class="px-2 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-500 border border-emerald-500/20 text-[10px] font-bold transition">✓ 移出</button>
+          </div>
         </div>
-      </div>
-    ` : '';
+      `;
+    }
 
     return `
       <div
@@ -935,7 +984,7 @@
             </p>
           </div>
         </div>
-        ${editActionsHtml}
+        ${footerHtml}
       </div>
     `;
   }
@@ -974,7 +1023,7 @@
               <span class="text-[11px] font-mono px-2 py-0.5 rounded-full theme-badge border">${toolsList.length}</span>
             </h2>
           </div>
-          <span class="text-[11px] text-slate-400 hidden sm:inline">支持 Ctrl+V 贴图与拖拽 · 自动暂存防误关</span>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">支持多图批处理与 Ctrl+V 贴图 · 自动暂存防误关</span>
         </div>
         <div class="${getCardGridClass()}">
           ${toolsList.map(tool => createToolCardHtml(tool)).join('')}
@@ -983,7 +1032,7 @@
     `;
   }
 
-  function renderGroupSectionHtml(spaceId, groupName, items, allowEmptyDrop = false, allowCollapse = true) {
+  function renderGroupSectionHtml(spaceId, groupName, items, allowEmptyDrop = false, allowCollapse = true, opts = {}) {
     const m = groupName.match(/^(\S+)\s+(.*)$/);
     const icon = m ? m[1] : '📁';
     const cleanTitle = m ? m[2] : groupName;
@@ -991,6 +1040,7 @@
     const collapseKey = `${spaceId || 'search'}::${groupName}`;
     const isSearching = !!(searchQuery.trim() && currentEngine === 'local');
     const isCollapsed = allowCollapse && !isSearching && !!collapsedGroups[collapseKey];
+    const isQuickSection = !!opts.isQuickSection;
 
     const sectionDropAttrs = (isEditMode && spaceId && spaceId !== 'home')
       ? `data-drop-section-space="${spaceId}" data-drop-section-group="${escG}"`
@@ -999,7 +1049,7 @@
     let bodyHtml = '';
     if (!isCollapsed) {
       bodyHtml = items.length > 0
-        ? `<div class="${getCardGridClass()}">${items.map(bm => createBookmarkCardHtml(bm)).join('')}</div>`
+        ? `<div class="${getCardGridClass()}">${items.map(bm => createBookmarkCardHtml(bm, { isQuickSection })).join('')}</div>`
         : (allowEmptyDrop ? `
           <div class="specular-card rounded-2xl p-8 text-center border-dashed border-2 border-slate-300/70 dark:border-slate-700/70 space-y-2">
             <div class="text-2xl">📂</div>
@@ -1011,9 +1061,13 @@
 
     if (!isCollapsed && !bodyHtml) return '';
 
+    const rightHeaderHtml = isQuickSection && items.length > 0
+      ? `<button type="button" data-clear-all-quick="1" title="一键移出全部快捷收藏（不删除书签本身）" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-500 hover:text-white dark:bg-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-300 transition shrink-0">🧹 清空列表</button>`
+      : (isEditMode && spaceId && spaceId !== 'home' ? `<span class="text-[11px] text-amber-500 font-semibold hidden sm:inline">⠿ 拖拽排序或扔进左侧分组 / 顶部 Dock</span>` : '');
+
     return `
       <section ${sectionDropAttrs} class="space-y-3.5 transition-all rounded-2xl">
-        <div class="flex items-center justify-between px-1">
+        <div class="flex items-center justify-between px-1 gap-2">
           <div ${allowCollapse && !isSearching ? `data-collapse-key="${escapeHtml(collapseKey)}" title="点击折叠或展开此分组"` : ''} class="flex items-center gap-2.5 ${allowCollapse && !isSearching ? 'cursor-pointer select-none group/sec' : ''}">
             <span class="w-8 h-8 rounded-xl bg-slate-200/80 dark:bg-slate-800/90 border border-slate-300/60 dark:border-slate-700/70 flex items-center justify-center text-base shadow-sm">${icon}</span>
             <h2 class="text-sm sm:text-base font-extrabold tracking-tight flex items-center gap-2">
@@ -1022,7 +1076,7 @@
               ${allowCollapse && !isSearching ? `<span class="text-[11px] text-slate-400 group-hover/sec:text-indigo-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}">▾</span>` : ''}
             </h2>
           </div>
-          ${isEditMode && spaceId && spaceId !== 'home' ? `<span class="text-[11px] text-amber-500 font-semibold hidden sm:inline">⠿ 拖拽排序或扔进左侧分组 / 顶部 Dock</span>` : ''}
+          ${rightHeaderHtml}
         </div>
         ${bodyHtml}
       </section>
@@ -1032,24 +1086,37 @@
   function renderMainContent() {
     const container = document.getElementById('mainContent');
     if (!container) return;
-    const q = searchQuery.trim().toLowerCase();
+    const rawQ = searchQuery.trim().toLowerCase();
+    const tokens = rawQ ? rawQ.split(/\s+/).filter(Boolean) : [];
     let html = '';
 
-    if (q && currentEngine === 'local') {
-      const matchedTools = BUILTIN_TOOLS.filter(t =>
-        t.title.toLowerCase().includes(q) ||
-        t.desc.toLowerCase().includes(q) ||
-        getPinyinInitials(t.title).includes(q)
-      );
-      const matchedBms = searchBookmarksWeighted(q);
-      if (matchedBms.length > 0) html += renderGroupSectionHtml('', '🔎 全局智能匹配（高频优先）', matchedBms, false, false);
+    if (tokens.length > 0 && currentEngine === 'local') {
+      const matchedTools = BUILTIN_TOOLS.filter(t => {
+        const title = t.title.toLowerCase();
+        const desc = t.desc.toLowerCase();
+        const titlePy = getPinyinInitials(t.title);
+        const descPy = getPinyinInitials(t.desc);
+        return tokens.every(tk => title.includes(tk) || desc.includes(tk) || titlePy.includes(tk) || descPy.includes(tk));
+      });
+      const matchedBms = searchBookmarksWeighted(rawQ);
+      const headerLabel = tokens.length > 1
+        ? `🔎 多词组合匹配 (${tokens.join(' + ')})`
+        : '🔎 全局智能匹配（高频优先）';
+      if (matchedBms.length > 0) html += renderGroupSectionHtml('', headerLabel, matchedBms, false, false);
       if (matchedTools.length > 0) html += renderBuiltinToolsSection(matchedTools);
     } else if (currentSpace === 'tools') {
       html += renderBuiltinToolsSection(BUILTIN_TOOLS);
     } else if (currentSpace === 'home') {
+      const quickList = bookmarks
+        .filter(b => b.quickSavedAt)
+        .sort((a, b) => (b.quickSavedAt || 0) - (a.quickSavedAt || 0))
+        .slice(0, currentGroup === 'quick' ? 40 : 8);
       const pinnedList = bookmarks.filter(b => b.pinned);
       const recentBms = recentVisits.map(r => bookmarks.find(b => b.id === r.id)).filter(Boolean).slice(0, 8);
 
+      if ((currentGroup === 'all' && quickList.length > 0) || currentGroup === 'quick') {
+        html += renderGroupSectionHtml('home', '📥 最近快捷收藏（右键 / Alt+S）', quickList, false, true, { isQuickSection: true });
+      }
       if (currentGroup === 'all' || currentGroup === 'pinned') {
         html += renderGroupSectionHtml('home', '⭐ 常用置顶工作台', pinnedList, false, true);
       }
@@ -1094,7 +1161,7 @@
         <div class="specular-card rounded-3xl p-12 text-center space-y-3">
           <div class="text-4xl">🔭</div>
           <h3 class="text-base font-bold">当前视图暂无匹配内容</h3>
-          <p class="text-xs text-slate-400">可尝试更换关键词或拼音首字母，或按 Tab 切换外部搜索引擎</p>
+          <p class="text-xs text-slate-400">可尝试更换关键词或空格组合词，或按 Tab 切换外部搜索引擎</p>
           <button type="button" data-reset-home="1" class="mt-2 px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold transition">返回首页聚焦</button>
         </div>
       `;
@@ -1118,7 +1185,7 @@
   }
   // ===== [PART 1 END] =====
 // ===== [PART 2 START] =====
-  // ==================== 10. 拖拽排序、分组换组、后台静默打开与右键菜单 ====================
+  // ==================== 10. 拖拽排序、分组换组、后台静默打开、单站刷图标与右键菜单 ====================
   function openBookmarkUrl(bmId, url, inBackground = false) {
     if (!url) return;
     recordBookmarkVisit(bmId, url);
@@ -1128,6 +1195,151 @@
     } else {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
+  }
+
+  async function fetchIconAsLocalBase64(url) {
+    const res = await fetchWithTimeout(url, { cache: 'no-store' }, 4500);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    if (!blob || blob.size < 60) throw new Error('empty');
+    if (blob.type && !blob.type.startsWith('image/') && !blob.type.includes('icon') && blob.type !== 'application/octet-stream') {
+      throw new Error('not-image');
+    }
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    if (blob.type && blob.type.includes('svg') && typeof dataUrl === 'string' && dataUrl.length <= 16000) {
+      return dataUrl;
+    }
+
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => (el.naturalWidth >= 16 && el.naturalHeight >= 16 ? resolve(el) : reject(new Error('too-small')));
+      el.onerror = reject;
+      el.src = dataUrl;
+    });
+
+    const maxSide = 64;
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(16, Math.round(img.naturalWidth * scale));
+    const h = Math.max(16, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/webp', 0.88);
+  }
+
+  async function fetchFastestHostIconBase64(host, pageUrl = '') {
+    const isPrivate = !host || /hzpipeline\.com|192\.168\.|127\.0\.0\.1|localhost/i.test(host);
+    const chromeLocal = (IS_EXTENSION && pageUrl)
+      ? chrome.runtime.getURL(`/_favicon/?pageUrl=${encodeURIComponent(pageUrl)}&size=64`)
+      : '';
+
+    // 内网地址直接走 Chrome 本地缓存图标或站点根路径，避免无意义外网请求
+    if (isPrivate) {
+      const localSources = [chromeLocal, host ? `https://${host}/favicon.ico` : ''].filter(Boolean);
+      for (const src of localSources) {
+        try { return await fetchIconAsLocalBase64(src); } catch {}
+      }
+      throw new Error('private-icon-fail');
+    }
+
+    const ts = Date.now();
+    const candidates = [
+      `https://www.google.com/s2/favicons?domain=${host}&sz=128&_t=${ts}`,
+      `https://api.iowen.cn/favicon/${host}.png?_t=${ts}`,
+      `https://favicon.im/${host}?larger=true&_t=${ts}`
+    ];
+    try {
+      return await Promise.any(candidates.map(url => fetchIconAsLocalBase64(url)));
+    } catch {
+      if (chromeLocal) return fetchIconAsLocalBase64(chromeLocal);
+      throw new Error('all-icon-sources-failed');
+    }
+  }
+
+  async function refreshBookmarkIcon(bmId) {
+    const bm = bookmarks.find(b => b.id === bmId);
+    if (!bm) return;
+    const host = extractDomain(bm.url).toLowerCase();
+    if (!host) { showToast('⚠️ 无法解析该书签域名'); return; }
+
+    hdUpgradedCache.delete(host);
+    iconBustMap.delete(bm.id);
+    showToast(`🔄 正在抓取并离线缓存「${bm.title}」的新图标...`);
+
+    try {
+      const base64Icon = await fetchFastestHostIconBase64(host, bm.url);
+      bm.customIcon = base64Icon;
+      hdUpgradedCache.set(host, base64Icon);
+      saveCoreState();
+      renderMainContent();
+      showToast(`✅ 「${bm.title}」的新图标已转为本地离线缓存，秒开不卡顿`);
+    } catch {
+      showToast(`⚠️ 未能拉取到「${bm.title}」的新图标，已保留原图标`);
+    }
+  }
+
+  // 把任意远程 http(s) customIcon（含右键快捷收藏抓到的网站图标与历史外链）静默转为本地离线 Base64
+  async function localizeRemoteCustomIcons() {
+    if (!Array.isArray(bookmarks) || bookmarks.length === 0) return;
+    const targets = bookmarks.filter(b =>
+      typeof b.customIcon === 'string' && /^https?:\/\//i.test(b.customIcon)
+    );
+    if (targets.length === 0) return;
+
+    let converted = 0;
+    for (const bm of targets) {
+      const host = extractDomain(bm.url).toLowerCase();
+      let base64Icon = '';
+      try {
+        base64Icon = await fetchIconAsLocalBase64(bm.customIcon);
+      } catch {
+        if (host) {
+          try { base64Icon = await fetchFastestHostIconBase64(host, bm.url); } catch {}
+        }
+      }
+      if (base64Icon) {
+        bm.customIcon = base64Icon;
+        if (host) hdUpgradedCache.set(host, base64Icon);
+        converted++;
+      }
+    }
+
+    if (converted > 0) {
+      saveCoreState();
+      renderMainContent();
+      showToast(`⚡ 已自动将 ${converted} 个在线图标转为本地离线缓存`);
+    }
+  }
+  window.addEventListener('load', () => { setTimeout(localizeRemoteCustomIcons, 1200); });
+
+  function dismissQuickSave(bmId) {
+    const bm = bookmarks.find(b => b.id === bmId);
+    if (!bm || !bm.quickSavedAt) return;
+    delete bm.quickSavedAt;
+    saveCoreState();
+    renderSidebarGroups();
+    renderMainContent();
+    showToast(`📤 已将「${bm.title}」移出快捷收藏（书签仍保留在「${bm.group}」）`);
+  }
+
+  function clearAllQuickSaves() {
+    const count = bookmarks.filter(b => b.quickSavedAt).length;
+    if (count === 0) return;
+    bookmarks.forEach(b => { if (b.quickSavedAt) delete b.quickSavedAt; });
+    saveCoreState();
+    renderSidebarGroups();
+    renderMainContent();
+    showToast(`🧹 已清空 ${count} 条快捷收藏收件箱（所有书签均完好保留在原分组）`);
   }
 
   function moveBookmarkTo(bmId, targetSpace, targetGroup) {
@@ -1170,10 +1382,11 @@
     contextMenuBmId = bmId;
     document.getElementById('ctxPinIcon').textContent = bm.pinned ? '☆' : '⭐';
     document.getElementById('ctxPinLabel').textContent = bm.pinned ? '取消首页置顶' : '置顶到首页';
+    document.getElementById('ctxDismissQuickBtn')?.classList.toggle('hidden', !bm.quickSavedAt);
 
     menu.classList.remove('hidden');
     const vw = window.innerWidth, vh = window.innerHeight;
-    const mw = menu.offsetWidth || 176, mh = menu.offsetHeight || 245;
+    const mw = menu.offsetWidth || 176, mh = menu.offsetHeight || 310;
     menu.style.left = `${Math.max(8, Math.min(e.clientX, vw - mw - 12))}px`;
     menu.style.top = `${Math.max(8, Math.min(e.clientY, vh - mh - 12))}px`;
   }
@@ -1284,7 +1497,7 @@
     renderMainContent();
   }
 
-  // ==================== 12. 管理模式、书签 CRUD（含非阻塞撤销删除）、重复与死链体检 ====================
+  // ==================== 12. 管理模式、书签 CRUD（含撤销删除）、重复与死链分级体检、分层维护 ====================
   function toggleEditMode() {
     isEditMode = !isEditMode;
     const textEl = document.getElementById('editModeText');
@@ -1377,6 +1590,7 @@
       const idx = bookmarks.findIndex(b => b.id === id);
       if (idx > -1) {
         bookmarks[idx] = { ...bookmarks[idx], space, group, url, title, desc, pinned, customIcon: customIcon || undefined };
+        iconBustMap.delete(id);
         showToast('✅ 书签已更新并自动保存');
       }
     } else {
@@ -1530,6 +1744,7 @@
     `;
   }
 
+  // 分级书签死链体检（区分：无法连通/超时 · 响应较慢 · 内网跳过）
   async function checkDeadLinks() {
     const box = document.getElementById('duplicateReportBox');
     if (!box) return;
@@ -1544,40 +1759,62 @@
     linkCheckAbortController = controller;
     const total = bookmarks.length;
     const failed = [];
+    const slowList = [];
+    let skippedCount = 0;
     let checked = 0;
 
     box.classList.remove('hidden');
+    const renderItemRow = (item, level) => {
+      const badge = level === 'dead'
+        ? `<span class="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20 text-[9px] font-mono shrink-0">超时/失效</span>`
+        : `<span class="px-1.5 py-0.2 rounded bg-amber-500/12 text-amber-500 border border-amber-500/25 text-[9px] font-mono shrink-0">${(item.ms / 1000).toFixed(1)}s 较慢</span>`;
+      return `
+        <div class="flex items-center justify-between gap-2 py-1 border-b border-slate-200/40 dark:border-slate-800 last:border-0">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              ${badge}
+              <span class="font-semibold truncate text-slate-700 dark:text-slate-200">${escapeHtml(item.bm.title)}</span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-400 truncate">${escapeHtml(item.bm.url)}</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" data-dead-open-url="${escapeHtml(item.bm.url)}" class="theme-text hover:underline">验证</button>
+            <button type="button" data-dead-del-id="${escapeHtml(item.bm.id)}" class="text-rose-500 hover:underline">删除</button>
+          </div>
+        </div>
+      `;
+    };
+
     const renderProgress = (done = false) => {
       const pct = total ? Math.round((checked / total) * 100) : 100;
-      const listHtml = failed.length > 0
-        ? failed.map(item => `
-            <div class="flex items-center justify-between gap-2 py-1 border-b border-slate-200/40 dark:border-slate-800 last:border-0">
-              <div class="min-w-0 flex-1">
-                <div class="font-semibold truncate text-slate-700 dark:text-slate-200">${escapeHtml(item.title)}</div>
-                <div class="font-mono text-[10px] text-slate-400 truncate">${escapeHtml(item.url)}</div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button type="button" data-dead-open-url="${escapeHtml(item.url)}" class="theme-text hover:underline">验证</button>
-                <button type="button" data-dead-del-id="${escapeHtml(item.id)}" class="text-rose-500 hover:underline">删除</button>
-              </div>
-            </div>
-          `).join('')
-        : (done ? `<div class="text-center py-2 text-emerald-500 font-semibold">✅ 全部 ${total} 个书签均正常连通！</div>` : '');
+      const rows = [
+        ...failed.map(item => renderItemRow(item, 'dead')),
+        ...slowList.map(item => renderItemRow(item, 'slow'))
+      ].join('');
+
+      const summaryHtml = `
+        <div class="flex flex-wrap gap-1.5 text-[10px] font-mono">
+          <span class="px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-500 border border-rose-500/20">无法连通 ${failed.length}</span>
+          <span class="px-2 py-0.5 rounded-lg bg-amber-500/12 text-amber-500 border border-amber-500/25">响应较慢 ${slowList.length}</span>
+          <span class="px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border border-cyan-500/20">内网跳过 ${skippedCount}</span>
+        </div>
+      `;
 
       box.innerHTML = `
         <div class="space-y-1.5 pb-1.5 border-b border-slate-200/70 dark:border-slate-700/70">
           <div class="flex items-center justify-between">
             <span class="font-bold ${done ? 'text-emerald-500' : 'theme-text'}">
-              ${done ? `🩺 体检完成：发现 ${failed.length} 个超时或疑似失效站点` : `🩺 正在并发探测连通性 (${checked}/${total} · ${pct}%)...`}
+              ${done ? '🩺 分级体检完成' : `🩺 正在并发探测连通性 (${checked}/${total} · ${pct}%)...`}
             </span>
             ${!done ? `<button type="button" data-dead-stop="1" class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">停止</button>` : ''}
           </div>
           <div class="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
             <div class="h-full theme-solid-bg rounded-full transition-all" style="width:${pct}%"></div>
           </div>
-          <div class="text-[10px] text-slate-400">注：海外站点受当前网络/代理节点影响，删除前建议先点「验证」确认</div>
+          ${summaryHtml}
+          <div class="text-[10px] text-slate-400">说明：浏览器安全策略下可精准排查域名失效与超时（部分站点 404 页或需代理访问，删前建议点「验证」复核）</div>
         </div>
-        ${listHtml}
+        ${rows || (done ? `<div class="text-center py-2 text-emerald-500 font-semibold">✅ 所有可检测书签均响应迅速且正常连通！</div>` : '')}
       `;
     };
 
@@ -1586,16 +1823,23 @@
     const queue = [...bookmarks];
     const probeOne = async bm => {
       if (controller.signal.aborted) return;
-      const isPrivate = !bm.url || bm.url.includes('hzpipeline.com') || bm.url.includes('192.168.') || bm.url.includes('localhost');
-      if (!isPrivate) {
+      const isPrivate = !bm.url || /hzpipeline\.com|192\.168\.|127\.0\.0\.1|localhost/i.test(bm.url);
+      if (isPrivate) {
+        skippedCount++;
+      } else {
         const tCtrl = new AbortController();
         const timer = setTimeout(() => tCtrl.abort(), 5500);
         const onParentAbort = () => tCtrl.abort();
         controller.signal.addEventListener('abort', onParentAbort, { once: true });
+        const startMs = Date.now();
         try {
           await fetch(bm.url, { mode: 'no-cors', cache: 'no-store', signal: tCtrl.signal });
+          const elapsed = Date.now() - startMs;
+          if (!controller.signal.aborted && elapsed >= 2800) {
+            slowList.push({ bm, ms: elapsed });
+          }
         } catch {
-          if (!controller.signal.aborted) failed.push(bm);
+          if (!controller.signal.aborted) failed.push({ bm, ms: Date.now() - startMs });
         } finally {
           clearTimeout(timer);
           controller.signal.removeEventListener('abort', onParentAbort);
@@ -1674,7 +1918,7 @@
   async function exportData() {
     const memo = document.getElementById('quickMemoArea')?.value || '';
     const settings = await collectCurrentSettings();
-    const payload = { version: 11, spaceGroups, bookmarks, todos, memo, settings };
+    const payload = { version: 11.1, spaceGroups, bookmarks, todos, memo, settings };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1716,15 +1960,11 @@
     reader.readAsText(file);
   }
 
-  const PRE_RESET_SNAPSHOT_KEY = 'ws_v11_pre_reset_snapshot';
-
   async function refreshMaintenanceUI() {
-    // 每次打开默认收起危险区，防误触
     document.getElementById('dcDangerBox')?.classList.add('hidden');
     const arrow = document.getElementById('dcDangerArrow');
     if (arrow) arrow.textContent = '▾';
 
-    // 动态显示种子书签数量，不再写死 168
     const resetBtn = document.getElementById('dcResetBtn');
     if (resetBtn) {
       resetBtn.textContent = INITIAL_BOOKMARKS.length > 0
@@ -1732,7 +1972,6 @@
         : '🔄 恢复出厂默认';
     }
 
-    // 检查是否存在重置前本机快照，有则展示「一键恢复」按钮
     const snapBtn = document.getElementById('dcRestoreSnapshotBtn');
     const snapText = document.getElementById('dcRestoreSnapshotText');
     if (!snapBtn) return;
@@ -1749,7 +1988,6 @@
     }
   }
 
-  // 🟢 1. 增量补全缺失的默认书签（绝不删改自建书签与排序）
   function mergeMissingDefaultBookmarks() {
     if (INITIAL_BOOKMARKS.length === 0) {
       showToast('⚠️ 未检测到 js/default-bookmarks.js，无法补全');
@@ -1787,7 +2025,6 @@
     showToast(`✨ 已安全补全 ${added} 条缺失的默认书签（自建内容不受影响）`);
   }
 
-  // 🟡 2. 仅重置界面外观、分组折叠与图标/天气缓存（书签、便签、待办一条不动）
   function resetUiAndCaches() {
     if (!confirm('将恢复默认深色主题、极光靛蓝强调色、展开全部折叠分组，并清理天气与图标缓存。\n\n你的书签、便签和待办完全不会受影响，是否继续？')) return;
     applyThemeUI('dark');
@@ -1797,6 +2034,7 @@
     collapsedGroups = {};
     weatherCacheMap = {};
     hdUpgradedCache.clear();
+    iconBustMap.clear();
 
     writeStoreInternal({
       [KEYS.theme]: 'dark',
@@ -1814,7 +2052,6 @@
     showToast('🎨 已重置界面外观与本地缓存（书签与便签完好保留）');
   }
 
-  // 自动留存重置前快照（本机扩展存储 + 自动下载 JSON 留底双保险）
   function savePreResetSnapshot() {
     if (bookmarks.length === 0) return;
     const cleanBms = bookmarks.map(b => {
@@ -1833,9 +2070,8 @@
     };
     writeStoreInternal({ [PRE_RESET_SNAPSHOT_KEY]: snapshot });
 
-    // 同步自动下载一份本地 JSON 文件作为硬备份
     try {
-      const blob = new Blob([JSON.stringify({ version: 11, ...snapshot }, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify({ version: 11.1, ...snapshot }, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1845,7 +2081,6 @@
     } catch {}
   }
 
-  // ↩️ 一键恢复上次重置前的本机快照
   async function restorePreResetSnapshot() {
     const saved = await storeGetAll([PRE_RESET_SNAPSHOT_KEY]);
     const snap = saved[PRE_RESET_SNAPSHOT_KEY];
@@ -1868,7 +2103,6 @@
     showToast(`↩️ 已成功恢复重置前的 ${bookmarks.length} 条书签与便签数据`);
   }
 
-  // 🔴 3. 恢复出厂默认（动态差值提示 + 自动留底快照 + 云端硬隔离绝不自动覆盖 Gist）
   function resetDefaultData() {
     if (INITIAL_BOOKMARKS.length === 0) {
       showToast('⚠️ 未检测到 js/default-bookmarks.js，无法恢复默认');
@@ -1884,17 +2118,17 @@
     spaceGroups = JSON.parse(JSON.stringify(INITIAL_SPACE_GROUPS));
     collapsedGroups = {};
     hdUpgradedCache.clear();
+    iconBustMap.clear();
     localUpdatedAt = Date.now();
     writeStoreInternal({ [KEYS.collapsed]: collapsedGroups });
     hydrateOfflineBase64Icons(true);
-    saveCoreState(true); // skipSync = true：云端硬隔离，绝不自动覆盖 Gist
+    saveCoreState(true);
 
     closeDataCenterModal();
     switchSpace('home', 'all');
     showToast(`🔄 本机已恢复默认 ${bookmarks.length} 条（已自动留底快照，云端数据未受影响）`, { duration: 4500 });
   }
 
-  // 🔴 4. 清空本机全部书签（同样享受自动留底快照 + 云端硬隔离）
   function clearAllLocalBookmarks() {
     if (bookmarks.length === 0) {
       showToast('💡 本机书签列表已经是空的');
@@ -1911,7 +2145,7 @@
     collapsedGroups = {};
     localUpdatedAt = Date.now();
     writeStoreInternal({ [KEYS.collapsed]: collapsedGroups });
-    saveCoreState(true); // skipSync = true：绝不向云端推送空列表
+    saveCoreState(true);
 
     closeDataCenterModal();
     switchSpace('home', 'all');
@@ -1978,7 +2212,7 @@
     if (forceOverwrite || !hasDesc) descInput.value = `${fmtBrand} (${cleanHost}) 在线创作工具与数字资源平台`;
   }
 
-  // ==================== 14. 最近访问、双标签便签待办、时钟、三路容灾天气与春节倒计时 ====================
+  // ==================== 14. 最近访问、双标签便签待办（含300ms防抖）、时钟、三路天气与春节倒计时 ====================
   function recordBookmarkVisit(bmId, url) {
     const bm = bookmarks.find(b => b.id === bmId) || { id: bmId || ('url_' + url), title: extractDomain(url), url };
     const idx = recentVisits.findIndex(r => r.id === bm.id || r.url === bm.url);
@@ -2053,12 +2287,12 @@
     }
   }
 
-  function updateSaveStatusTimestamp() {
+  function updateSaveStatusTimestamp(customText = '') {
     const status = document.getElementById('memoSaveStatus');
-    if (status) {
-      const now = new Date();
-      status.textContent = `已保存 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    }
+    if (!status) return;
+    if (customText) { status.textContent = customText; return; }
+    const now = new Date();
+    status.textContent = `已保存 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   }
 
   function saveTodos(skipSync = false) {
@@ -2092,12 +2326,25 @@
     `).join('');
   }
 
-  function handleMemoInput(val, skipSync = false) {
+  // 便签 300ms 轻防抖写盘（减少长文本编辑 I/O，页面关闭前自动立即落盘）
+  function flushMemoWriteNow(val, skipSync = false) {
+    clearTimeout(memoWriteTimer);
+    memoWriteTimer = null;
     if (!skipSync) localUpdatedAt = Date.now();
     writeStoreInternal({ [KEYS.memo]: val, [KEYS.updatedAt]: localUpdatedAt });
-    updateMemoCount(val);
     updateSaveStatusTimestamp();
     if (!skipSync) scheduleAutoSync();
+  }
+
+  function handleMemoInput(val, skipSync = false) {
+    updateMemoCount(val);
+    if (skipSync) {
+      flushMemoWriteNow(val, true);
+      return;
+    }
+    updateSaveStatusTimestamp('保存中...');
+    clearTimeout(memoWriteTimer);
+    memoWriteTimer = setTimeout(() => flushMemoWriteNow(val, false), 300);
   }
 
   function updateMemoCount(val) {
@@ -2261,7 +2508,7 @@
     return { icon: '🌤️', desc: '天气良好' };
   }
 
-  // ==================== 15. 内置 8 大纯本地效率工具（Ctrl+V 贴图/拖拽 + 真实主色聚类 + 标准 UTF-8 编解码） ====================
+  // ==================== 15. 内置 8 大纯本地效率工具（圆角/格式转换支持多图批处理） ====================
   function openToolModal(type) {
     const modal = document.getElementById('toolModal');
     const title = document.getElementById('toolModalTitle');
@@ -2297,10 +2544,11 @@
       `;
       updateTextStats();
     } else if (type === 'radius') {
-      title.textContent = '🖼️ 本地图片圆角合成器 (支持 Ctrl+V 贴图 / 拖拽)';
+      title.textContent = '🖼️ 本地图片圆角合成器 (支持多图批处理 / Ctrl+V / 拖拽)';
       body.innerHTML = `
         <div class="space-y-3 text-xs">
-          <input type="file" id="radiusFileInput" accept="image/*" class="tool-file-input">
+          <input type="file" id="radiusFileInput" accept="image/*" multiple class="tool-file-input">
+          <div id="radiusBatchBar" class="hidden p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/70 space-y-2"></div>
           <div class="flex items-center gap-3">
             <span class="font-semibold shrink-0">圆角半径:</span>
             <input type="range" id="radiusSlider" min="0" max="200" value="${escapeHtml(toolSessionCache.radiusVal)}" class="flex-1 accent-indigo-600">
@@ -2308,14 +2556,17 @@
           </div>
           <div data-img-dropzone="radius" class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-4 border-2 border-dashed border-slate-300 dark:border-slate-700 transition">
             <canvas id="radiusCanvas" class="max-h-56 max-w-full rounded shadow-sm"></canvas>
-            <div class="text-[11px] text-slate-400 mt-2">💡 可直接按 Ctrl+V 粘贴截图，或拖入本地图片到此区域</div>
+            <div class="text-[11px] text-slate-400 mt-2">💡 支持一次性拖入多张图片，或按 Ctrl+V 追加剪贴板截图</div>
           </div>
-          <div class="flex justify-end">
-            <button type="button" data-tool-btn="radius-download" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold">💾 导出透明 PNG</button>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button type="button" id="radiusClearBtn" data-tool-btn="radius-clear" class="hidden px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-semibold">清空队列</button>
+            <button type="button" data-tool-btn="radius-download" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold">💾 导出当前 PNG</button>
+            <button type="button" id="radiusBatchExportBtn" data-tool-btn="radius-download-all" class="hidden px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold">📦 批量导出全部</button>
           </div>
         </div>
       `;
-      if (loadedRadiusImg) previewRadiusImage();
+      renderRadiusBatchBar();
+      previewRadiusImage();
     } else if (type === 'time') {
       const nowUnix = Math.floor(Date.now() / 1000);
       const initTs = toolSessionCache.ts || String(nowUnix);
@@ -2368,10 +2619,11 @@
       `;
       if (paletteSourceImg) drawPaletteImg(paletteSourceImg);
     } else if (type === 'converter') {
-      title.textContent = '🔄 本地图片格式转换 & 压缩 (支持 Ctrl+V 贴图 / 拖拽)';
+      title.textContent = '🔄 本地图片格式转换 & 批量压缩 (支持多图批处理 / Ctrl+V / 拖拽)';
       body.innerHTML = `
         <div class="space-y-3.5 text-xs">
-          <input type="file" id="convFileInput" accept="image/*" class="tool-file-input">
+          <input type="file" id="convFileInput" accept="image/*" multiple class="tool-file-input">
+          <div id="convBatchBar" class="hidden p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/70 space-y-2"></div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
               <label class="block text-slate-400 mb-1">输出格式</label>
@@ -2392,18 +2644,21 @@
               <input type="range" id="convQuality" min="10" max="100" value="${escapeHtml(toolSessionCache.convQuality)}" class="w-full accent-indigo-600 mt-2">
             </div>
           </div>
-          <div id="convInfoBadge" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/70 font-mono text-slate-500 text-center">请选择、拖入或按 Ctrl+V 粘贴图片</div>
+          <div id="convInfoBadge" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/70 font-mono text-slate-500 text-center">支持一次拖入多张图片批量转 WebP / 压缩，或按 Ctrl+V 粘贴截图</div>
           <div data-img-dropzone="converter" class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/90 rounded-2xl p-3 border-2 border-dashed border-slate-300 dark:border-slate-700 transition">
             <canvas id="convCanvas" class="max-h-48 max-w-full rounded shadow-sm"></canvas>
           </div>
-          <div class="flex justify-end">
-            <button type="button" data-tool-btn="conv-download" class="px-5 py-2 rounded-xl theme-solid-bg text-white font-semibold">💾 导出转换后图片</button>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button type="button" id="convClearBtn" data-tool-btn="conv-clear" class="hidden px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 font-semibold">清空队列</button>
+            <button type="button" data-tool-btn="conv-download" class="px-4 py-2 rounded-xl theme-solid-bg text-white font-semibold">💾 导出当前图片</button>
+            <button type="button" id="convBatchExportBtn" data-tool-btn="conv-download-all" class="hidden px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">📦 批量导出全部</button>
           </div>
         </div>
       `;
       document.getElementById('convFormat').value = toolSessionCache.convFormat;
       document.getElementById('convScale').value = toolSessionCache.convScale;
-      if (convSourceImg) updateConvertedPreview();
+      renderConvBatchBar();
+      updateConvertedPreview();
     } else if (type === 'cgcalc') {
       title.textContent = '🎬 CG 帧率时间码 & 画幅分辨率计算器';
       body.innerHTML = `
@@ -2496,30 +2751,212 @@
     document.getElementById('toolModal')?.classList.add('hidden');
   }
 
-  function loadImageFileToActiveTool(file, targetTool = currentToolType) {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = new Image();
-      img.onload = () => {
-        if (targetTool === 'radius') {
-          loadedRadiusImg = img;
-          previewRadiusImage();
-          showToast('🖼️ 图片已载入圆角合成器');
-        } else if (targetTool === 'palette') {
-          paletteSourceImg = img;
-          drawPaletteImg(img);
-          showToast('🎨 已完成主色聚类调色板提取');
-        } else if (targetTool === 'converter') {
-          convOriginalName = (file.name || 'clipboard_img').replace(/\.[^.]+$/, '') || 'image';
-          convSourceImg = img;
-          updateConvertedPreview();
-          showToast('🔄 图片已载入格式转换器');
-        }
+  // 多图批处理载入引擎（支持多选、多图拖拽、Ctrl+V 追加）
+  function readImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const baseName = (file.name || `img_${Date.now().toString().slice(-4)}`).replace(/\.[^.]+$/, '') || 'image';
+          resolve({ name: baseName, img });
+        };
+        img.onerror = reject;
+        img.src = ev.target.result;
       };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function loadImageFilesToActiveTool(fileList, targetTool = currentToolType) {
+    const imgFiles = Array.from(fileList || []).filter(f => f && f.type && f.type.startsWith('image/'));
+    if (imgFiles.length === 0) return;
+
+    if (targetTool === 'palette') {
+      try {
+        const loaded = await readImageFile(imgFiles[0]);
+        paletteSourceImg = loaded.img;
+        drawPaletteImg(loaded.img);
+        showToast('🎨 已完成主色聚类调色板提取');
+      } catch { showToast('❌ 读取图片失败'); }
+      return;
+    }
+
+    const loadedItems = [];
+    for (const f of imgFiles.slice(0, 20)) {
+      try { loadedItems.push(await readImageFile(f)); } catch {}
+    }
+    if (loadedItems.length === 0) return;
+
+    if (targetTool === 'radius') {
+      radiusBatchItems = [...radiusBatchItems, ...loadedItems].slice(-20);
+      radiusActiveIdx = radiusBatchItems.length - 1;
+      renderRadiusBatchBar();
+      previewRadiusImage();
+      showToast(loadedItems.length > 1 ? `🖼️ 已批量载入 ${loadedItems.length} 张图片（队列共 ${radiusBatchItems.length} 张）` : '🖼️ 图片已载入圆角合成器');
+    } else if (targetTool === 'converter') {
+      convBatchItems = [...convBatchItems, ...loadedItems].slice(-20);
+      convActiveIdx = convBatchItems.length - 1;
+      renderConvBatchBar();
+      updateConvertedPreview();
+      showToast(loadedItems.length > 1 ? `🔄 已批量载入 ${loadedItems.length} 张图片（队列共 ${convBatchItems.length} 张）` : '🔄 图片已载入格式转换器');
+    }
+  }
+
+  function renderBatchChipsHtml(toolKey, items, activeIdx) {
+    return `
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="font-bold text-slate-600 dark:text-slate-300">📂 批处理队列 (${items.length} 张，点击切换预览)</span>
+        <span class="text-[10px] text-slate-400">最多同时 20 张</span>
+      </div>
+      <div class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+        ${items.map((item, idx) => `
+          <div class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] transition ${
+            idx === activeIdx
+              ? 'batch-chip-active font-bold'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+          }">
+            <button type="button" data-batch-select="${toolKey}" data-batch-idx="${idx}" class="truncate" style="max-width:120px">${escapeHtml(item.name)}</button>
+            <button type="button" data-batch-remove="${toolKey}" data-batch-idx="${idx}" class="opacity-75 hover:opacity-100 text-[10px] px-0.5">✕</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function renderRadiusBatchBar() {
+    const bar = document.getElementById('radiusBatchBar');
+    const batchBtn = document.getElementById('radiusBatchExportBtn');
+    const clearBtn = document.getElementById('radiusClearBtn');
+    if (bar) {
+      bar.classList.toggle('hidden', radiusBatchItems.length === 0);
+      if (radiusBatchItems.length > 0) bar.innerHTML = renderBatchChipsHtml('radius', radiusBatchItems, radiusActiveIdx);
+    }
+    if (batchBtn) {
+      batchBtn.classList.toggle('hidden', radiusBatchItems.length <= 1);
+      batchBtn.textContent = `📦 批量导出全部 (${radiusBatchItems.length}张)`;
+    }
+    if (clearBtn) clearBtn.classList.toggle('hidden', radiusBatchItems.length === 0);
+  }
+
+  function renderConvBatchBar() {
+    const bar = document.getElementById('convBatchBar');
+    const batchBtn = document.getElementById('convBatchExportBtn');
+    const clearBtn = document.getElementById('convClearBtn');
+    if (bar) {
+      bar.classList.toggle('hidden', convBatchItems.length === 0);
+      if (convBatchItems.length > 0) bar.innerHTML = renderBatchChipsHtml('converter', convBatchItems, convActiveIdx);
+    }
+    if (batchBtn) {
+      batchBtn.classList.toggle('hidden', convBatchItems.length <= 1);
+      batchBtn.textContent = `📦 批量导出全部 (${convBatchItems.length}张)`;
+    }
+    if (clearBtn) clearBtn.classList.toggle('hidden', convBatchItems.length === 0);
+  }
+
+  function drawRoundedToCanvas(canvas, img, r) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = img.width; canvas.height = img.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const rad = Math.min(r, canvas.width / 2, canvas.height / 2);
+    ctx.beginPath();
+    ctx.moveTo(rad, 0);
+    ctx.arcTo(canvas.width, 0, canvas.width, canvas.height, rad);
+    ctx.arcTo(canvas.width, canvas.height, 0, canvas.height, rad);
+    ctx.arcTo(0, canvas.height, 0, 0, rad);
+    ctx.arcTo(0, 0, canvas.width, 0, rad);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, 0, 0);
+  }
+
+  function previewRadiusImage() {
+    const slider = document.getElementById('radiusSlider');
+    const canvas = document.getElementById('radiusCanvas');
+    if (!canvas || !slider) return;
+    toolSessionCache.radiusVal = slider.value;
+    const r = parseInt(slider.value, 10);
+    const label = document.getElementById('radiusValLabel');
+    if (label) label.textContent = r + 'px';
+
+    const cur = radiusBatchItems[radiusActiveIdx];
+    if (!cur) {
+      const ctx = canvas.getContext('2d');
+      canvas.width = 0; canvas.height = 0;
+      ctx?.clearRect(0, 0, 0, 0);
+      return;
+    }
+    drawRoundedToCanvas(canvas, cur.img, r);
+  }
+
+  async function batchExportRadiusImages() {
+    if (radiusBatchItems.length === 0) { showToast('💡 请先选择或粘贴图片'); return; }
+    const r = parseInt(toolSessionCache.radiusVal || '36', 10);
+    const offscreen = document.createElement('canvas');
+    for (let i = 0; i < radiusBatchItems.length; i++) {
+      const item = radiusBatchItems[i];
+      drawRoundedToCanvas(offscreen, item.img, r);
+      const a = document.createElement('a');
+      a.href = offscreen.toDataURL('image/png');
+      a.download = `${item.name}_rounded.png`;
+      a.click();
+      if (i < radiusBatchItems.length - 1) await new Promise(res => setTimeout(res, 180));
+    }
+    showToast(`📦 已批量导出 ${radiusBatchItems.length} 张圆角透明 PNG`);
+  }
+
+  function updateConvertedPreview() {
+    const q = document.getElementById('convQuality')?.value || '88';
+    const fmt = document.getElementById('convFormat')?.value || 'image/jpeg';
+    const scaleStr = document.getElementById('convScale')?.value || '1';
+    toolSessionCache.convQuality = q;
+    toolSessionCache.convFormat = fmt;
+    toolSessionCache.convScale = scaleStr;
+    const ql = document.getElementById('convQualityLabel');
+    if (ql) ql.textContent = q + '%';
+
+    const cur = convBatchItems[convActiveIdx];
+    const canvas = document.getElementById('convCanvas');
+    const badge = document.getElementById('convInfoBadge');
+    if (!cur || !canvas) {
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+      if (badge) badge.textContent = '支持一次拖入多张图片批量转 WebP / 压缩，或按 Ctrl+V 粘贴截图';
+      return;
+    }
+
+    const scale = parseFloat(scaleStr);
+    const w = Math.max(1, Math.round(cur.img.width * scale));
+    const h = Math.max(1, Math.round(cur.img.height * scale));
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, w, h); ctx.drawImage(cur.img, 0, 0, w, h);
+    const kb = Math.round((canvas.toDataURL(fmt, parseInt(q, 10) / 100).length * 0.75) / 1024);
+    if (badge) badge.textContent = `当前: ${cur.name} ｜ ${w} × ${h} px ｜ 预计体积: ~${kb} KB`;
+  }
+
+  async function batchExportConvertedImages() {
+    if (convBatchItems.length === 0) { showToast('💡 请先选择或粘贴图片'); return; }
+    const fmt = toolSessionCache.convFormat;
+    const scale = parseFloat(toolSessionCache.convScale || '1');
+    const quality = parseInt(toolSessionCache.convQuality || '88', 10) / 100;
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[fmt] || 'jpg';
+    const offscreen = document.createElement('canvas');
+    const ctx = offscreen.getContext('2d');
+
+    for (let i = 0; i < convBatchItems.length; i++) {
+      const item = convBatchItems[i];
+      const w = Math.max(1, Math.round(item.img.width * scale));
+      const h = Math.max(1, Math.round(item.img.height * scale));
+      offscreen.width = w; offscreen.height = h;
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(item.img, 0, 0, w, h);
+      const a = document.createElement('a');
+      a.href = offscreen.toDataURL(fmt, quality);
+      a.download = `${item.name}.${ext}`;
+      a.click();
+      if (i < convBatchItems.length - 1) await new Promise(res => setTimeout(res, 180));
+    }
+    showToast(`📦 已批量导出 ${convBatchItems.length} 张 ${ext.toUpperCase()} 图片`);
   }
 
   function runJsonTool(mode) {
@@ -2546,30 +2983,6 @@
     set('stCN', (val.match(/[\u4e00-\u9fa5]/g) || []).length);
     set('stEN', (val.trim().match(/[a-zA-Z0-9_]+/g) || []).length);
     set('stLines', val ? val.split(/\r?\n/).length : 0);
-  }
-
-  function previewRadiusImage() {
-    const slider = document.getElementById('radiusSlider');
-    const canvas = document.getElementById('radiusCanvas');
-    if (!canvas || !slider) return;
-    toolSessionCache.radiusVal = slider.value;
-    const r = parseInt(slider.value, 10);
-    document.getElementById('radiusValLabel').textContent = r + 'px';
-    if (!loadedRadiusImg) return;
-    const img = loadedRadiusImg;
-    const ctx = canvas.getContext('2d');
-    canvas.width = img.width; canvas.height = img.height;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const rad = Math.min(r, canvas.width / 2, canvas.height / 2);
-    ctx.beginPath();
-    ctx.moveTo(rad, 0);
-    ctx.arcTo(canvas.width, 0, canvas.width, canvas.height, rad);
-    ctx.arcTo(canvas.width, canvas.height, 0, canvas.height, rad);
-    ctx.arcTo(0, canvas.height, 0, 0, rad);
-    ctx.arcTo(0, 0, canvas.width, 0, rad);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(img, 0, 0);
   }
 
   function convertTimestamp() {
@@ -2653,26 +3066,6 @@
     }
   }
 
-  function updateConvertedPreview() {
-    const q = document.getElementById('convQuality')?.value || '88';
-    const fmt = document.getElementById('convFormat')?.value || 'image/jpeg';
-    const scaleStr = document.getElementById('convScale')?.value || '1';
-    toolSessionCache.convQuality = q;
-    toolSessionCache.convFormat = fmt;
-    toolSessionCache.convScale = scaleStr;
-    const ql = document.getElementById('convQualityLabel');
-    if (ql) ql.textContent = q + '%';
-    if (!convSourceImg) return;
-    const scale = parseFloat(scaleStr);
-    const canvas = document.getElementById('convCanvas');
-    const w = Math.max(1, Math.round(convSourceImg.width * scale)), h = Math.max(1, Math.round(convSourceImg.height * scale));
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, w, h); ctx.drawImage(convSourceImg, 0, 0, w, h);
-    const kb = Math.round((canvas.toDataURL(fmt, parseInt(q, 10) / 100).length * 0.75) / 1024);
-    const badge = document.getElementById('convInfoBadge');
-    if (badge) badge.textContent = `输出尺寸: ${w} × ${h} px ｜ 预计大小: ~${kb} KB`;
-  }
-
   function calcCgFramesToTc() {
     const fpsVal = document.getElementById('cgFps')?.value || '30';
     const fVal = document.getElementById('cgFramesInput')?.value || '0';
@@ -2736,7 +3129,7 @@
 
   // ==================== 16. 全局纯事件委托中心 ====================
   function bindAllEvents() {
-    // 1) 左栏控件 & 云同步配置（输入即自动保存 + 冲突处理）
+    // 1) 左栏控件 & 云同步配置（输入即自动保存 + 冲突无损合并）
     document.getElementById('brandLogoBtn')?.addEventListener('click', e => {
       if (isEditMode) { e.stopPropagation(); document.getElementById('brandLogoInput')?.click(); }
       else { clearSearchQuiet(); switchSpace('home', 'all'); }
@@ -2752,6 +3145,7 @@
     document.getElementById('openDataCenterBtn')?.addEventListener('click', openDataCenterModal);
     document.getElementById('storageBadgePill')?.addEventListener('click', openDataCenterModal);
 
+    document.getElementById('conflictMergeBtn')?.addEventListener('click', mergeConflictWithRemote);
     document.getElementById('conflictPullBtn')?.addEventListener('click', () => pullFromGist(false));
     document.getElementById('conflictForcePushBtn')?.addEventListener('click', () => pushToGist(false, true));
 
@@ -2880,7 +3274,7 @@
     catNav?.addEventListener('dragend', () => { draggedBookmarkId = null; draggedGroupInfo = null; clearAllDragClasses(); });
     bindNavDropDelegation(catNav);
 
-    // 6) 中栏主内容区事件委托（支持 Ctrl+单击 & 鼠标中键后台静默打开）
+    // 6) 中栏主内容区事件委托
     const main = document.getElementById('mainContent');
     if (main) {
       main.addEventListener('load', e => {
@@ -2910,8 +3304,10 @@
           else if (act === 'move') openMoveGroupModal(id);
           else if (act === 'edit') openBookmarkModal(id);
           else if (act === 'delete') deleteBookmark(id);
+          else if (act === 'dismiss-quick') dismissQuickSave(id);
           return;
         }
+        if (e.target.closest('[data-clear-all-quick]')) { clearAllQuickSaves(); return; }
         const collapseBtn = e.target.closest('[data-collapse-key]');
         if (collapseBtn) {
           const key = collapseBtn.getAttribute('data-collapse-key');
@@ -3006,7 +3402,7 @@
       main.addEventListener('dragend', () => { draggedBookmarkId = null; draggedGroupInfo = null; clearAllDragClasses(); });
     }
 
-    // 7) 右栏天气、便签与待办
+    // 7) 右栏天气、便签（含关页即时落盘）与待办
     document.getElementById('citySelector')?.addEventListener('change', e => changeWeatherCity(e.target.value, true, false));
     const retryWeather = () => fetchWeatherData(lastWeatherArgs.lat, lastWeatherArgs.lon, lastWeatherArgs.cityName, true);
     document.getElementById('weatherIcon')?.addEventListener('click', retryWeather);
@@ -3015,6 +3411,12 @@
     document.getElementById('tabBtnMemo')?.addEventListener('click', () => switchNoteTab('memo'));
     document.getElementById('tabBtnTodo')?.addEventListener('click', () => switchNoteTab('todo'));
     document.getElementById('quickMemoArea')?.addEventListener('input', e => handleMemoInput(e.target.value));
+    window.addEventListener('pagehide', () => {
+      if (memoWriteTimer) {
+        const area = document.getElementById('quickMemoArea');
+        flushMemoWriteNow(area ? area.value : '', false);
+      }
+    });
     document.getElementById('insertMemoTimeBtn')?.addEventListener('click', () => {
       const area = document.getElementById('quickMemoArea');
       if (!area) return;
@@ -3031,7 +3433,7 @@
     });
     document.getElementById('clearMemoBtn')?.addEventListener('click', () => {
       const area = document.getElementById('quickMemoArea');
-      if (area && area.value && confirm('确定清空当前便签内容吗？')) { area.value = ''; handleMemoInput(''); showToast('🧹 便签已清空'); }
+      if (area && area.value && confirm('确定清空当前便签内容吗？')) { area.value = ''; flushMemoWriteNow('', false); updateMemoCount(''); showToast('🧹 便签已清空'); }
     });
     document.getElementById('todoForm')?.addEventListener('submit', e => {
       e.preventDefault();
@@ -3065,7 +3467,7 @@
       showToast(`🧹 已清理 ${before - todos.length} 条已完成待办`);
     });
 
-    // 8) 右键菜单
+    // 8) 右键菜单（含单站图标强制刷新）
     document.getElementById('cardContextMenu')?.addEventListener('click', e => {
       e.stopPropagation();
       const btn = e.target.closest('[data-ctx-action]');
@@ -3078,12 +3480,15 @@
       if (action === 'open-bg') openBookmarkUrl(id, bm.url, true);
       else if (action === 'pin') togglePinBookmark(id);
       else if (action === 'copy') navigator.clipboard.writeText(bm.url).then(() => showToast('📋 网址已复制到剪贴板'));
+      else if (action === 'refresh-icon') refreshBookmarkIcon(id);
+      else if (action === 'refresh-icon') refreshBookmarkIcon(id);
+      else if (action === 'dismiss-quick') dismissQuickSave(id);
       else if (action === 'move') openMoveGroupModal(id);
       else if (action === 'edit') openBookmarkModal(id);
       else if (action === 'delete') deleteBookmark(id);
     });
 
-    // 9) 书签、移动分组、数据中心与死链体检弹窗
+    // 9) 书签、移动分组、数据中心与分级维护弹窗
     document.getElementById('bookmarkModal')?.addEventListener('click', e => { if (e.target.id === 'bookmarkModal') closeBookmarkModal(); });
     document.getElementById('closeBookmarkModalBtn')?.addEventListener('click', closeBookmarkModal);
     document.getElementById('cancelBookmarkModalBtn')?.addEventListener('click', closeBookmarkModal);
@@ -3159,7 +3564,7 @@
       }
     });
 
-    // 10) 工具箱弹窗内部委托 + 拖拽本地图片导入 + 全局 Ctrl+V 贴图
+    // 10) 工具箱弹窗内部委托 + 多图拖拽导入 + 全局 Ctrl+V 贴图 + 批处理队列控制
     document.getElementById('toolModal')?.addEventListener('click', e => { if (e.target.id === 'toolModal') closeToolModal(); });
     document.getElementById('closeToolModalBtn')?.addEventListener('click', closeToolModal);
     const toolBody = document.getElementById('toolModalBody');
@@ -3176,8 +3581,9 @@
       if (!dz) return;
       e.preventDefault();
       dz.classList.remove('nav-drop-target');
-      const file = e.dataTransfer?.files?.[0];
-      if (file) loadImageFileToActiveTool(file, dz.getAttribute('data-img-dropzone'));
+      if (e.dataTransfer?.files?.length) {
+        loadImageFilesToActiveTool(e.dataTransfer.files, dz.getAttribute('data-img-dropzone'));
+      }
     });
 
     document.addEventListener('paste', e => {
@@ -3186,15 +3592,16 @@
       if (!modal || modal.classList.contains('hidden')) return;
       const items = e.clipboardData?.items;
       if (!items) return;
+      const files = [];
       for (const item of items) {
         if (item.type && item.type.startsWith('image/')) {
           const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            loadImageFileToActiveTool(file, currentToolType);
-            return;
-          }
+          if (file) files.push(file);
         }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        loadImageFilesToActiveTool(files, currentToolType);
       }
     });
 
@@ -3212,14 +3619,43 @@
     });
     toolBody?.addEventListener('change', e => {
       const id = e.target.id;
-      if (id === 'radiusFileInput' && e.target.files?.[0]) loadImageFileToActiveTool(e.target.files[0], 'radius');
-      else if (id === 'paletteFileInput' && e.target.files?.[0]) loadImageFileToActiveTool(e.target.files[0], 'palette');
-      else if (id === 'convFileInput' && e.target.files?.[0]) loadImageFileToActiveTool(e.target.files[0], 'converter');
-      else if (id === 'convFormat' || id === 'convScale') updateConvertedPreview();
+      if (id === 'radiusFileInput' && e.target.files?.length) {
+        loadImageFilesToActiveTool(e.target.files, 'radius');
+        e.target.value = '';
+      } else if (id === 'paletteFileInput' && e.target.files?.length) {
+        loadImageFilesToActiveTool(e.target.files, 'palette');
+        e.target.value = '';
+      } else if (id === 'convFileInput' && e.target.files?.length) {
+        loadImageFilesToActiveTool(e.target.files, 'converter');
+        e.target.value = '';
+      } else if (id === 'convFormat' || id === 'convScale') updateConvertedPreview();
       else if (id === 'cgFps') calcCgFramesToTc();
       else if (id === 'cgRatio') calcCgResolution();
     });
     toolBody?.addEventListener('click', e => {
+      const batchSel = e.target.closest('[data-batch-select]');
+      if (batchSel) {
+        const tool = batchSel.getAttribute('data-batch-select');
+        const idx = parseInt(batchSel.getAttribute('data-batch-idx'), 10);
+        if (tool === 'radius') { radiusActiveIdx = idx; renderRadiusBatchBar(); previewRadiusImage(); }
+        else if (tool === 'converter') { convActiveIdx = idx; renderConvBatchBar(); updateConvertedPreview(); }
+        return;
+      }
+      const batchRem = e.target.closest('[data-batch-remove]');
+      if (batchRem) {
+        const tool = batchRem.getAttribute('data-batch-remove');
+        const idx = parseInt(batchRem.getAttribute('data-batch-idx'), 10);
+        if (tool === 'radius') {
+          radiusBatchItems.splice(idx, 1);
+          radiusActiveIdx = Math.max(0, Math.min(radiusActiveIdx, radiusBatchItems.length - 1));
+          renderRadiusBatchBar(); previewRadiusImage();
+        } else if (tool === 'converter') {
+          convBatchItems.splice(idx, 1);
+          convActiveIdx = Math.max(0, Math.min(convActiveIdx, convBatchItems.length - 1));
+          renderConvBatchBar(); updateConvertedPreview();
+        }
+        return;
+      }
       if (e.target.id === 'paletteCanvas') {
         const canvas = e.target; if (!canvas.width) return;
         const rect = canvas.getBoundingClientRect();
@@ -3247,19 +3683,25 @@
         const el = document.getElementById('textToolInput');
         if (el) { el.value = Array.from(new Set(el.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean))).join('\n'); toolSessionCache.text = el.value; updateTextStats(); showToast('🧹 已按行去重'); }
       } else if (act === 'text-copy') { navigator.clipboard.writeText(document.getElementById('textToolInput')?.value || ''); showToast('📋 已复制文本'); }
+      else if (act === 'radius-clear') { radiusBatchItems = []; radiusActiveIdx = 0; renderRadiusBatchBar(); previewRadiusImage(); }
       else if (act === 'radius-download') {
         const c = document.getElementById('radiusCanvas');
-        if (!c || !loadedRadiusImg) { showToast('💡 请先选择或粘贴图片'); return; }
-        const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'rounded.png'; a.click();
-      } else if (act === 'ts-convert') convertTimestamp();
+        const cur = radiusBatchItems[radiusActiveIdx];
+        if (!c || !cur) { showToast('💡 请先选择或粘贴图片'); return; }
+        const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = `${cur.name}_rounded.png`; a.click();
+      } else if (act === 'radius-download-all') batchExportRadiusImages();
+      else if (act === 'ts-convert') convertTimestamp();
       else if (act === 'palette-copy') { navigator.clipboard.writeText(toolSessionCache.pickedHex); showToast(`🎨 已复制 ${toolSessionCache.pickedHex}`); }
+      else if (act === 'conv-clear') { convBatchItems = []; convActiveIdx = 0; renderConvBatchBar(); updateConvertedPreview(); }
       else if (act === 'conv-download') {
-        if (!convSourceImg) { showToast('💡 请先选择或粘贴图片'); return; }
+        const cur = convBatchItems[convActiveIdx];
+        if (!cur) { showToast('💡 请先选择或粘贴图片'); return; }
         const c = document.getElementById('convCanvas');
         const fmt = toolSessionCache.convFormat;
         const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[fmt] || 'jpg';
-        const a = document.createElement('a'); a.href = c.toDataURL(fmt, parseInt(toolSessionCache.convQuality, 10) / 100); a.download = `${convOriginalName}.${ext}`; a.click();
-      } else if (['b64enc', 'b64dec', 'urlenc', 'urldec'].includes(act)) runCodec(act);
+        const a = document.createElement('a'); a.href = c.toDataURL(fmt, parseInt(toolSessionCache.convQuality, 10) / 100); a.download = `${cur.name}.${ext}`; a.click();
+      } else if (act === 'conv-download-all') batchExportConvertedImages();
+      else if (['b64enc', 'b64dec', 'urlenc', 'urldec'].includes(act)) runCodec(act);
       else if (act === 'codec-copy') { navigator.clipboard.writeText(document.getElementById('codecInput')?.value || ''); showToast('📋 已复制'); }
       else if (act === 'pwd-gen') generateStrongPassword();
       else if (act === 'pwd-copy') { navigator.clipboard.writeText(document.getElementById('pwdOutput')?.value || ''); showToast('📋 强密码已复制'); }
@@ -3373,7 +3815,7 @@
     });
   }
 
-  // ==================== 17. 通用工具函数与增强版 Toast（支持撤销按钮） ====================
+  // ==================== 17. 通用工具函数与增强版 Toast ====================
   async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -3411,7 +3853,7 @@
     }, delay);
   }
 
-  // ==================== 18. GitHub 私有 Gist 后台可靠云同步与冲突保护引擎 ====================
+  // ==================== 18. GitHub 私有 Gist 云同步与双机无损智能合并引擎 ====================
   const GIST_FILENAME = 'personal_workspace_sync.json';
 
   function showSyncConflictBanner(info) {
@@ -3419,7 +3861,7 @@
     const text = document.getElementById('syncConflictText');
     if (!banner) return;
     const rTime = info?.remoteUpdatedAt ? new Date(info.remoteUpdatedAt).toLocaleString() : '较新时间';
-    if (text) text.textContent = `检测到云端存在另一台设备更新的数据（${rTime}），已暂停覆盖保护数据安全，请选择：`;
+    if (text) text.textContent = `检测到云端存在另一台设备更新的数据（${rTime}），已暂停覆盖保护数据安全，推荐点击「智能合并两边」无损保留双方修改：`;
     banner.classList.remove('hidden');
     updateSyncBadgeUI('conflict');
   }
@@ -3523,6 +3965,127 @@
     };
   }
 
+  async function fetchRemoteGistData() {
+    const res = await fetchWithTimeout(`https://api.github.com/gists/${encodeURIComponent(ghSyncConfig.gistId)}`, {
+      headers: ghHeaders(),
+      cache: 'no-store'
+    }, 10000);
+
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('Token 无效或已过期');
+      if (res.status === 404) throw new Error('找不到对应的 Gist ID');
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const json = await res.json();
+    const fileObj = json.files?.[GIST_FILENAME] || Object.values(json.files || {}).find(f => f.filename?.endsWith('.json'));
+    if (!fileObj) throw new Error('Gist 中未找到同步数据文件');
+
+    let rawContent = fileObj.content || '';
+    if (fileObj.truncated && fileObj.raw_url) {
+      const rawRes = await fetchWithTimeout(fileObj.raw_url, { cache: 'no-store' }, 10000);
+      rawContent = await rawRes.text();
+    }
+    return JSON.parse(rawContent);
+  }
+
+  // 🔀 双机冲突无损智能合并：按规范 URL 并集合并书签 + 合并分组 + 并集合并待办 + 安全拼接便签，再推送云端
+  async function mergeConflictWithRemote() {
+    if (!ghSyncConfig.token || !ghSyncConfig.gistId) {
+      showToast('💡 请先配置 GitHub Token 和 Gist ID');
+      return;
+    }
+    if (isSyncing) return;
+    isSyncing = true;
+    updateSyncBadgeUI('syncing');
+
+    try {
+      const remoteData = await fetchRemoteGistData();
+      const remoteBms = Array.isArray(remoteData.bookmarks) ? remoteData.bookmarks : [];
+      const localMap = new Map(bookmarks.map(b => [canonicalUrlKey(b.url), b]));
+      let addedBms = 0;
+
+      remoteBms.forEach(rb => {
+        const key = canonicalUrlKey(rb.url);
+        if (!localMap.has(key)) {
+          bookmarks.push(rb);
+          localMap.set(key, rb);
+          addedBms++;
+        } else {
+          const lb = localMap.get(key);
+          if (rb.pinned && !lb.pinned) lb.pinned = true;
+        }
+      });
+
+      // 并集合并各空间分组
+      if (remoteData.spaceGroups && typeof remoteData.spaceGroups === 'object') {
+        Object.entries(remoteData.spaceGroups).forEach(([sp, list]) => {
+          if (!Array.isArray(list)) return;
+          if (!spaceGroups[sp]) spaceGroups[sp] = [];
+          list.forEach(g => { if (!spaceGroups[sp].includes(g)) spaceGroups[sp].push(g); });
+        });
+      }
+      bookmarks.forEach(b => {
+        if (!spaceGroups[b.space]) spaceGroups[b.space] = [];
+        if (b.group && !spaceGroups[b.space].includes(b.group)) spaceGroups[b.space].push(b.group);
+      });
+
+      // 并集合并待办清单
+      const remoteTodos = Array.isArray(remoteData.todos) ? remoteData.todos : [];
+      const localTodoIds = new Set(todos.map(t => t.id));
+      const localTodoTexts = new Set(todos.map(t => (t.text || '').trim().toLowerCase()));
+      let addedTodos = 0;
+      remoteTodos.forEach(rt => {
+        const normText = (rt.text || '').trim().toLowerCase();
+        if (!localTodoIds.has(rt.id) && !localTodoTexts.has(normText)) {
+          todos.push(rt);
+          localTodoIds.add(rt.id);
+          localTodoTexts.add(normText);
+          addedTodos++;
+        }
+      });
+
+      // 便签智能防丢合并
+      const area = document.getElementById('quickMemoArea');
+      const localMemo = (area ? area.value : '').trim();
+      const remoteMemo = (typeof remoteData.memo === 'string' ? remoteData.memo : '').trim();
+      let mergedMemo = localMemo;
+      if (remoteMemo && remoteMemo !== localMemo) {
+        if (!localMemo) mergedMemo = remoteMemo;
+        else if (remoteMemo.includes(localMemo)) mergedMemo = remoteMemo;
+        else if (!localMemo.includes(remoteMemo)) mergedMemo = `${localMemo}\n\n--- [另一台设备合并] ---\n${remoteMemo}`;
+      }
+      if (area) area.value = mergedMemo;
+
+      // 合并分组折叠映射
+      if (remoteData.settings?.collapsed && typeof remoteData.settings.collapsed === 'object') {
+        collapsedGroups = { ...remoteData.settings.collapsed, ...collapsedGroups };
+        writeStoreInternal({ [KEYS.collapsed]: collapsedGroups });
+      }
+
+      localUpdatedAt = Date.now();
+      hydrateOfflineBase64Icons(true);
+      saveTodos(true);
+      renderTodoList();
+      flushMemoWriteNow(mergedMemo, true);
+      updateMemoCount(mergedMemo);
+      saveCoreState(true);
+      renderSpaceDock();
+      renderSidebarGroups();
+      renderMainContent();
+
+      isSyncing = false;
+      await pushToGist(true, true);
+      hideSyncConflictBanner();
+      showToast(`🔀 无损合并完成：补入云端 ${addedBms} 条书签、${addedTodos} 条待办并已同步上云`, { duration: 4200 });
+    } catch (err) {
+      console.error('智能合并失败:', err);
+      updateSyncBadgeUI('error');
+      showToast(`❌ 智能合并失败：${err.message || '请检查网络'}`);
+      isSyncing = false;
+    }
+  }
+
   function scheduleAutoSync() {
     if (!ghSyncConfig.token || !ghSyncConfig.autoSync) return;
     clearTimeout(autoSyncTimer);
@@ -3547,7 +4110,7 @@
         const res = await chrome.runtime.sendMessage({ type: 'SYNC_PUSH', force });
         if (res?.conflict) {
           showSyncConflictBanner({ remoteUpdatedAt: res.remoteUpdatedAt });
-          showToast('⚠️ 检测到云端有另一台设备的新改动，请先确认处理');
+          showToast('⚠️ 检测到云端有另一台设备的新改动，推荐点击顶部「智能合并两边」');
           return;
         }
         if (res?.ok) {
@@ -3590,10 +4153,10 @@
         return item;
       });
       const nowTs = Math.max(Date.now(), localUpdatedAt);
-      const payload = { version: 11, updatedAt: nowTs, spaceGroups, bookmarks: cleanBookmarks, todos, memo: document.getElementById('quickMemoArea')?.value || '', settings };
+      const payload = { version: 11.1, updatedAt: nowTs, spaceGroups, bookmarks: cleanBookmarks, todos, memo: document.getElementById('quickMemoArea')?.value || '', settings };
       const isCreate = !ghSyncConfig.gistId;
       const endpoint = isCreate ? 'https://api.github.com/gists' : `https://api.github.com/gists/${encodeURIComponent(ghSyncConfig.gistId)}`;
-      const body = { description: 'Personal Workspace OS - Private Sync Data (v11)', files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } };
+      const body = { description: 'Personal Workspace OS - Private Sync Data (v11.1)', files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } };
       if (isCreate) body.public = false;
 
       const res = await fetchWithTimeout(endpoint, { method: isCreate ? 'POST' : 'PATCH', headers: ghHeaders(), body: JSON.stringify(body) }, 12000);
@@ -3625,28 +4188,7 @@
     updateSyncBadgeUI('syncing');
 
     try {
-      const res = await fetchWithTimeout(`https://api.github.com/gists/${encodeURIComponent(ghSyncConfig.gistId)}`, {
-        headers: ghHeaders(),
-        cache: 'no-store'
-      }, 10000);
-
-      if (!res.ok) {
-        if (res.status === 401) throw new Error('Token 无效或已过期');
-        if (res.status === 404) throw new Error('找不到对应的 Gist ID');
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const json = await res.json();
-      const fileObj = json.files?.[GIST_FILENAME] || Object.values(json.files || {}).find(f => f.filename?.endsWith('.json'));
-      if (!fileObj) throw new Error('Gist 中未找到同步数据文件');
-
-      let rawContent = fileObj.content || '';
-      if (fileObj.truncated && fileObj.raw_url) {
-        const rawRes = await fetchWithTimeout(fileObj.raw_url, { cache: 'no-store' }, 10000);
-        rawContent = await rawRes.text();
-      }
-
-      const remoteData = JSON.parse(rawContent);
+      const remoteData = await fetchRemoteGistData();
       const remoteTime = typeof remoteData.updatedAt === 'number' ? remoteData.updatedAt : 0;
 
       if (onlyIfNewer && remoteTime <= localUpdatedAt && localUpdatedAt > 0) {
