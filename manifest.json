@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "个人效率工作台 & 全景书签导航 OS",
-  "version": "11.1.0",
+  "version": "11.2.0",
   "description": "创作者与开发者专属全景书签导航座舱、无损云端同步与 8 大纯本地效率工具箱",
   "icons": {
     "16": "logo.png",
@@ -13,7 +13,8 @@
     "default_title": "一键启动效率工作台"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "omnibox": {
     "keyword": "ws"
@@ -30,7 +31,8 @@
     "storage",
     "tabs",
     "contextMenus",
-    "favicon"
+    "favicon",
+    "alarms"
   ],
   "host_permissions": [
     "https://api.open-meteo.com/*",
@@ -40,6 +42,11 @@
     "https://api.github.com/*",
     "https://gist.githubusercontent.com/*",
     "https://*.gstatic.com/*",
+    "https://www.google.com/*",
+    "https://api.iowen.cn/*",
+    "https://favicon.im/*"
+  ],
+  "optional_host_permissions": [
     "https://*/*",
     "http://*/*"
   ],

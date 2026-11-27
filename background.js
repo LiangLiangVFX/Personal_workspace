@@ -1,66 +1,84 @@
 /* ==========================================================================
-   个人效率工作台 OS — Manifest V3 后台服务引擎 (v11.1)
-   功能：单实例启动 · 右键/Alt+S 收藏(异步抓真实简介) · 地址栏 ws 拼音/多词直搜 ·
-         GitHub Gist 后台防漏传队列与冲突检测
+   个人效率工作台 OS — Manifest V3 后台服务引擎 (v11.2 · ES Module)
+   功能：单实例启动 · 右键/Alt+S 收藏(并发串行保护) · 地址栏 ws 拼音直搜 ·
+         Gist 双文件分离同步 + Alarms 休眠补推 · 后台真实状态码四级死链体检
    ========================================================================== */
 
-const KEYS = {
-  bookmarks: 'ws_v10_bookmarks',
-  spaceGroups: 'ws_v10_space_groups',
-  collapsed: 'ws_v10_collapsed_groups',
-  customLogo: 'ws_v10_custom_logo',
-  recentVisits: 'ws_v10_recent_visits',
-  memo: 'ws_v10_quick_memo',
-  todos: 'ws_v10_quick_todos',
-  theme: 'ws_v10_theme',
-  accent: 'ws_v10_accent',
-  rightPanel: 'ws_v10_right_panel',
-  city: 'ws_v10_weather_city_v2',
-  ghSync: 'ws_v10_gh_sync',
-  updatedAt: 'ws_v10_updated_at',
-  pendingSaves: 'ws_v11_pending_saves',
-  syncConflict: 'ws_v11_sync_conflict'
-};
+import {
+  KEYS,
+  GIST_FILENAME,
+  DEFAULT_WEATHER_CITY,
+  MAX_SYNC_ICON_LENGTH
+} from './js/shared/constants.js';
+import {
+  generateId,
+  canonicalUrlKey,
+  isPrivateHostOrUrl,
+  escapeXml
+} from './js/shared/url-utils.js';
+import { getPinyinInitials } from './js/shared/pinyin.js';
+import {
+  fetchWithTimeout,
+  buildGhHeaders,
+  buildGistFilesPayload,
+  pruneTombstones
+} from './js/shared/net.js';
 
-const GIST_FILENAME = 'personal_workspace_sync.json';
-const QUICK_SAVE_MENU_ID = 'ws-quick-save-page';
+const SYNC_RETRY_ALARM = 'ws_sync_retry';
+const SYNC_LOCK_KEY = 'ws_bg_sync_lock';
+const SYNC_LOCK_TTL_MS = 45000;
+const RETRY_DELAYS_MIN = [1, 3, 10, 20, 30];
 
 let bgSyncing = false;
 let bgPendingPush = false;
 let bgForceNext = false;
+let omniboxSearchSeq = 0;
+let storageWriteQueue = Promise.resolve();
 
-// ==================== 0. 轻量级拼音首字母引擎（供地址栏 ws 直搜使用） ====================
-const PY_BOUNDARIES = [
-  ['a', '阿'], ['b', '芭'], ['c', '擦'], ['d', '搭'], ['e', '蛾'],
-  ['f', '发'], ['g', '噶'], ['h', '哈'], ['j', '击'], ['k', '喀'],
-  ['l', '垃'], ['m', '妈'], ['n', '拿'], ['o', '哦'], ['p', '啪'],
-  ['q', '期'], ['r', '然'], ['s', '撒'], ['t', '塌'], ['w', '挖'],
-  ['x', '昔'], ['y', '压'], ['z', '匝']
-];
-const zhCollator = typeof Intl !== 'undefined' ? new Intl.Collator('zh-CN') : null;
-const pinyinCache = new Map();
+function enqueueStorageMutation(task) {
+  const next = storageWriteQueue.then(task, task);
+  storageWriteQueue = next.catch(() => {});
+  return next;
+}
 
-function getPinyinInitials(str) {
-  if (!str || !zhCollator) return '';
-  if (pinyinCache.has(str)) return pinyinCache.get(str);
-  let out = '';
-  for (const ch of str) {
-    if (/[a-zA-Z0-9]/.test(ch)) {
-      out += ch.toLowerCase();
-    } else if (/[\u4e00-\u9fa5]/.test(ch)) {
-      let letter = '';
-      for (let i = PY_BOUNDARIES.length - 1; i >= 0; i--) {
-        if (zhCollator.compare(ch, PY_BOUNDARIES[i][1]) >= 0) {
-          letter = PY_BOUNDARIES[i][0];
-          break;
-        }
-      }
-      out += letter;
-    }
+async function acquireSessionLock() {
+  if (bgSyncing) return false;
+  if (chrome.storage?.session) {
+    try {
+      const data = await chrome.storage.session.get([SYNC_LOCK_KEY]);
+      const lockAt = data?.[SYNC_LOCK_KEY] || 0;
+      if (lockAt && Date.now() - lockAt < SYNC_LOCK_TTL_MS) return false;
+      await chrome.storage.session.set({ [SYNC_LOCK_KEY]: Date.now() });
+    } catch {}
   }
-  if (pinyinCache.size > 800) pinyinCache.clear();
-  pinyinCache.set(str, out);
-  return out;
+  bgSyncing = true;
+  return true;
+}
+
+async function releaseSessionLock() {
+  bgSyncing = false;
+  if (chrome.storage?.session) {
+    try { await chrome.storage.session.remove([SYNC_LOCK_KEY]); } catch {}
+  }
+}
+
+async function markSyncMeta(patch) {
+  const saved = await chrome.storage.local.get([KEYS.syncMeta]);
+  const prev = (saved[KEYS.syncMeta] && typeof saved[KEYS.syncMeta] === 'object') ? saved[KEYS.syncMeta] : {};
+  const next = { dirty: false, dirtyAt: 0, retryCount: 0, lastError: '', ...prev, ...patch };
+  await chrome.storage.local.set({ [KEYS.syncMeta]: next });
+  return next;
+}
+
+async function scheduleRetryAlarm(retryCount) {
+  if (!chrome.alarms) return;
+  const idx = Math.min(Math.max(0, retryCount - 1), RETRY_DELAYS_MIN.length - 1);
+  await chrome.alarms.create(SYNC_RETRY_ALARM, { delayInMinutes: RETRY_DELAYS_MIN[idx] });
+}
+
+async function clearRetryAlarm() {
+  if (!chrome.alarms) return;
+  try { await chrome.alarms.clear(SYNC_RETRY_ALARM); } catch {}
 }
 
 // ==================== 1. 工具栏图标单实例启动 ====================
@@ -71,13 +89,16 @@ async function openOrFocusWorkspace(query = '') {
 
   if (existingTabs.length > 0) {
     const tab = existingTabs[0];
-    if (query) {
-      await chrome.tabs.update(tab.id, { url: targetUrl, active: true });
-    } else {
-      await chrome.tabs.update(tab.id, { active: true });
-    }
+    await chrome.tabs.update(tab.id, { active: true });
     if (typeof tab.windowId === 'number') {
       await chrome.windows.update(tab.windowId, { focused: true });
+    }
+    if (query) {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'APPLY_SEARCH_QUERY', query });
+      } catch {
+        await chrome.tabs.update(tab.id, { url: targetUrl, active: true });
+      }
     }
   } else {
     await chrome.tabs.create({ url: targetUrl });
@@ -106,61 +127,78 @@ const DEFAULT_GROUP_BY_SPACE = {
 
 function registerContextMenus() {
   chrome.contextMenus.removeAll(() => {
+    void chrome.runtime.lastError;
     chrome.contextMenus.create({
       id: QUICK_SAVE_PARENT_ID,
       title: '⚡ 收藏到效率工作台',
       contexts: ['page', 'link']
-    });
+    }, () => void chrome.runtime.lastError);
     QUICK_SAVE_MENUS.forEach(item => {
       chrome.contextMenus.create({
         id: item.id,
         parentId: QUICK_SAVE_PARENT_ID,
         title: item.title,
         contexts: ['page', 'link']
-      });
+      }, () => void chrome.runtime.lastError);
     });
   });
 }
 
-chrome.runtime.onInstalled.addListener(registerContextMenus);
-chrome.runtime.onStartup.addListener(registerContextMenus);
+chrome.runtime.onInstalled.addListener(() => {
+  registerContextMenus();
+});
 
-function inferSpaceAndGroup(url, title) {
+chrome.runtime.onStartup.addListener(async () => {
+  registerContextMenus();
+  const saved = await chrome.storage.local.get([KEYS.syncMeta, KEYS.ghSync]);
+  if (saved[KEYS.syncMeta]?.dirty && saved[KEYS.ghSync]?.token && saved[KEYS.ghSync]?.autoSync !== false) {
+    triggerBackgroundPush(false);
+  }
+});
+
+chrome.alarms?.onAlarm.addListener(alarm => {
+  if (alarm?.name === SYNC_RETRY_ALARM) {
+    triggerBackgroundPush(false);
+  }
+});
+
+const AUTO_CLASSIFY_RULES = [
+  {
+    match: /(openai|chatgpt|gemini|claude|deepseek|kimi|perplexity|civitai|liblib|comfyui|huggingface|flux|pixverse|heygen|fish\.audio|siliconflow|coze|ai\b)/i,
+    space: 'ai',
+    subRules: [
+      { match: /(civitai|liblib|comfyui|flux|krea|openart|prompt|stability|upscal)/i, group: '🎨 绘画与 ComfyUI' },
+      { match: /(video|pixverse|heygen|domoai|audio|podcast|tts|swapface)/i, group: '🎬 视频与音频' }
+    ],
+    defaultGroup: '🧠 对话与搜索'
+  },
+  {
+    match: /(unreal|ue5|fab\.com|artstation|cgtrader|sketchfab|kitbash|daz3d|polyhaven|ambientcg|hdri|pbr|cgpersia|vfx|blender|houdini|3d)/i,
+    space: 'cg',
+    subRules: [
+      { match: /(polyhaven|ambientcg|texture|hdri|pbr)/i, group: '🌍 PBR 材质与 HDRI' },
+      { match: /(unreal|ue5|fab\.com|vfx|niagara|magesbox)/i, group: '🎮 UE5 与实时特效' }
+    ],
+    defaultGroup: '🧊 3D 模型与扫描'
+  },
+  {
+    match: /(github\.com|vercel|cloudflare|namesilo|qiniu|dogecloud|wordpress|clash|vpn|ghxi|repack|download)/i,
+    space: 'software',
+    subRules: [
+      { match: /(vercel|cloudflare|namesilo|qiniu|dogecloud|pagespeed|wordpress)/i, group: '🌐 建站与云服务' }
+    ],
+    defaultGroup: '💻 绿色软件与脚本'
+  }
+];
+
+export function inferSpaceAndGroup(url, title) {
   const str = `${url} ${title}`.toLowerCase();
-  if (/(openai|chatgpt|gemini|claude|deepseek|kimi|perplexity|civitai|liblib|comfyui|huggingface|flux|pixverse|heygen|fish\.audio|siliconflow|coze|ai\b)/i.test(str)) {
-    if (/(civitai|liblib|comfyui|flux|krea|openart|prompt|stability|upscal)/i.test(str)) {
-      return { space: 'ai', group: '🎨 绘画与 ComfyUI' };
-    }
-    if (/(video|pixverse|heygen|domoai|audio|podcast|tts|swapface)/i.test(str)) {
-      return { space: 'ai', group: '🎬 视频与音频' };
-    }
-    return { space: 'ai', group: '🧠 对话与搜索' };
-  }
-  if (/(unreal|ue5|fab\.com|artstation|cgtrader|sketchfab|kitbash|daz3d|polyhaven|ambientcg|hdri|pbr|cgpersia|vfx|blender|houdini|3d)/i.test(str)) {
-    if (/(polyhaven|ambientcg|texture|hdri|pbr)/i.test(str)) {
-      return { space: 'cg', group: '🌍 PBR 材质与 HDRI' };
-    }
-    if (/(unreal|ue5|fab\.com|vfx|niagara|magesbox)/i.test(str)) {
-      return { space: 'cg', group: '🎮 UE5 与实时特效' };
-    }
-    return { space: 'cg', group: '🧊 3D 模型与扫描' };
-  }
-  if (/(github\.com|vercel|cloudflare|namesilo|qiniu|dogecloud|wordpress|clash|vpn|ghxi|repack|download)/i.test(str)) {
-    if (/(vercel|cloudflare|namesilo|qiniu|dogecloud|pagespeed|wordpress)/i.test(str)) {
-      return { space: 'software', group: '🌐 建站与云服务' };
-    }
-    return { space: 'software', group: '💻 绿色软件与脚本' };
+  for (const rule of AUTO_CLASSIFY_RULES) {
+    if (!rule.match.test(str)) continue;
+    const matchedSub = rule.subRules?.find(sub => sub.match.test(str));
+    return { space: rule.space, group: matchedSub ? matchedSub.group : rule.defaultGroup };
   }
   return { space: 'media', group: '🔥 社区与工作台' };
-}
-
-function canonicalUrlKey(url) {
-  try {
-    const u = new URL(url);
-    return u.hostname.replace(/^www\./, '').toLowerCase() + u.pathname.replace(/\/+$/, '').toLowerCase() + u.search.toLowerCase();
-  } catch {
-    return String(url || '').trim().replace(/\/$/, '').toLowerCase();
-  }
 }
 
 function flashBadge(text, color) {
@@ -171,8 +209,7 @@ function flashBadge(text, color) {
 
 async function enrichSavedBookmarkMetadata(bmId, rawUrl, fallbackDesc, isRawUrlTitle) {
   try {
-    const isPrivate = !rawUrl || /localhost|127\.0\.0\.1|192\.168\.|hzpipeline\.com/i.test(rawUrl);
-    if (isPrivate) return;
+    if (isPrivateHostOrUrl(rawUrl)) return;
 
     const res = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(rawUrl)}`, { cache: 'no-store' }, 6500);
     if (!res.ok) return;
@@ -183,33 +220,36 @@ async function enrichSavedBookmarkMetadata(bmId, rawUrl, fallbackDesc, isRawUrlT
     const fetchedDesc = (json.data.description || '').trim();
     if (!fetchedDesc && (!isRawUrlTitle || !fetchedTitle)) return;
 
-    const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.pendingSaves]);
-    let updated = false;
+    await enqueueStorageMutation(async () => {
+      const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.pendingSaves]);
 
-    const patchList = list => {
-      if (!Array.isArray(list)) return false;
-      const item = list.find(b => b.id === bmId);
-      if (!item) return false;
-      if (fetchedDesc && item.desc === fallbackDesc) {
-        item.desc = fetchedDesc.length > 92 ? fetchedDesc.slice(0, 92) + '...' : fetchedDesc;
-        updated = true;
-      }
-      if (isRawUrlTitle && fetchedTitle) {
-        item.title = fetchedTitle.length > 44 ? fetchedTitle.slice(0, 44) : fetchedTitle;
-        updated = true;
-      }
-      return updated;
-    };
+      const patchList = list => {
+        if (!Array.isArray(list)) return false;
+        const item = list.find(b => b.id === bmId);
+        if (!item) return false;
+        let changed = false;
+        if (fetchedDesc && item.desc === fallbackDesc) {
+          item.desc = fetchedDesc.length > 92 ? fetchedDesc.slice(0, 92) + '...' : fetchedDesc;
+          changed = true;
+        }
+        if (isRawUrlTitle && fetchedTitle) {
+          item.title = fetchedTitle.length > 44 ? fetchedTitle.slice(0, 44) : fetchedTitle;
+          changed = true;
+        }
+        if (changed) item.updatedAt = Date.now();
+        return changed;
+      };
 
-    if (patchList(saved[KEYS.bookmarks])) {
-      await chrome.storage.local.set({
-        [KEYS.bookmarks]: saved[KEYS.bookmarks],
-        [KEYS.updatedAt]: Date.now()
-      });
-      triggerBackgroundPush(false);
-    } else if (patchList(saved[KEYS.pendingSaves])) {
-      await chrome.storage.local.set({ [KEYS.pendingSaves]: saved[KEYS.pendingSaves] });
-    }
+      if (patchList(saved[KEYS.bookmarks])) {
+        await chrome.storage.local.set({
+          [KEYS.bookmarks]: saved[KEYS.bookmarks],
+          [KEYS.updatedAt]: Date.now()
+        });
+        triggerBackgroundPush(false);
+      } else if (patchList(saved[KEYS.pendingSaves])) {
+        await chrome.storage.local.set({ [KEYS.pendingSaves]: saved[KEYS.pendingSaves] });
+      }
+    });
   } catch {}
 }
 
@@ -232,27 +272,31 @@ async function fetchIconAsDataUrlInBg(url) {
   if (mime && !mime.startsWith('image/') && !mime.includes('icon') && mime !== 'application/octet-stream') {
     throw new Error('not-image');
   }
-  if (mime.includes('svg') && blob.size <= 16384) {
-    return `data:image/svg+xml;base64,${arrayBufferToBase64(await blob.arrayBuffer())}`;
+  if (mime.includes('svg') && blob.size <= 8192) {
+    const svgData = `data:image/svg+xml;base64,${arrayBufferToBase64(await blob.arrayBuffer())}`;
+    if (svgData.length <= MAX_SYNC_ICON_LENGTH) return svgData;
   }
   if (typeof createImageBitmap === 'function' && typeof OffscreenCanvas === 'function') {
     const bmp = await createImageBitmap(blob);
     try {
       if (bmp.width < 16 || bmp.height < 16) throw new Error('too-small');
-      const scale = Math.min(1, 64 / Math.max(bmp.width, bmp.height));
+      const scale = Math.min(1, 48 / Math.max(bmp.width, bmp.height));
       const w = Math.max(16, Math.round(bmp.width * scale));
       const h = Math.max(16, Math.round(bmp.height * scale));
       const canvas = new OffscreenCanvas(w, h);
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, w, h);
       ctx.drawImage(bmp, 0, 0, w, h);
-      const webpBlob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.88 });
-      return `data:image/webp;base64,${arrayBufferToBase64(await webpBlob.arrayBuffer())}`;
+      const webpBlob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.80 });
+      const dataUrl = `data:image/webp;base64,${arrayBufferToBase64(await webpBlob.arrayBuffer())}`;
+      if (dataUrl.length <= MAX_SYNC_ICON_LENGTH) return dataUrl;
+      const smallBlob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.65 });
+      return `data:image/webp;base64,${arrayBufferToBase64(await smallBlob.arrayBuffer())}`;
     } finally {
       bmp.close();
     }
   }
-  if (blob.size <= 32768) {
+  if (blob.size <= 8192) {
     return `data:${mime || 'image/png'};base64,${arrayBufferToBase64(await blob.arrayBuffer())}`;
   }
   throw new Error('too-large');
@@ -261,7 +305,7 @@ async function fetchIconAsDataUrlInBg(url) {
 async function cacheQuickSaveIconBg(bmId, rawUrl, favIconUrl = '') {
   let host = '';
   try { host = new URL(rawUrl).hostname.toLowerCase(); } catch {}
-  const isPrivate = !host || /hzpipeline\.com|192\.168\.|127\.0\.0\.1|localhost/i.test(host);
+  const isPrivate = isPrivateHostOrUrl(host);
 
   const orderedTry = [];
   if (favIconUrl && /^https?:\/\//i.test(favIconUrl)) orderedTry.push(favIconUrl);
@@ -284,24 +328,27 @@ async function cacheQuickSaveIconBg(bmId, rawUrl, favIconUrl = '') {
   }
   if (!dataUrl) return;
 
-  const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.pendingSaves]);
-  const patchList = list => {
-    if (!Array.isArray(list)) return false;
-    const item = list.find(b => b.id === bmId);
-    if (!item) return false;
-    item.customIcon = dataUrl;
-    return true;
-  };
+  await enqueueStorageMutation(async () => {
+    const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.pendingSaves]);
+    const patchList = list => {
+      if (!Array.isArray(list)) return false;
+      const item = list.find(b => b.id === bmId);
+      if (!item) return false;
+      item.customIcon = dataUrl;
+      item.updatedAt = Date.now();
+      return true;
+    };
 
-  if (patchList(saved[KEYS.bookmarks])) {
-    await chrome.storage.local.set({
-      [KEYS.bookmarks]: saved[KEYS.bookmarks],
-      [KEYS.updatedAt]: Date.now()
-    });
-    triggerBackgroundPush(false);
-  } else if (patchList(saved[KEYS.pendingSaves])) {
-    await chrome.storage.local.set({ [KEYS.pendingSaves]: saved[KEYS.pendingSaves] });
-  }
+    if (patchList(saved[KEYS.bookmarks])) {
+      await chrome.storage.local.set({
+        [KEYS.bookmarks]: saved[KEYS.bookmarks],
+        [KEYS.updatedAt]: Date.now()
+      });
+      triggerBackgroundPush(false);
+    } else if (patchList(saved[KEYS.pendingSaves])) {
+      await chrome.storage.local.set({ [KEYS.pendingSaves]: saved[KEYS.pendingSaves] });
+    }
+  });
 }
 
 async function quickSaveUrl(rawUrl, rawTitle = '', favIconUrl = '', opts = {}) {
@@ -315,71 +362,100 @@ async function quickSaveUrl(rawUrl, rawTitle = '', favIconUrl = '', opts = {}) {
   const isRawUrlTitle = !rawTitle || /^https?:\/\//i.test(rawTitle.trim());
   const cleanTitle = (rawTitle || host || '新建书签').trim().slice(0, 48);
 
-  const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.spaceGroups, KEYS.pendingSaves]);
-  const list = Array.isArray(saved[KEYS.bookmarks]) ? saved[KEYS.bookmarks] : [];
-  const groups = (saved[KEYS.spaceGroups] && typeof saved[KEYS.spaceGroups] === 'object') ? saved[KEYS.spaceGroups] : {};
+  const actionResult = await enqueueStorageMutation(async () => {
+    const saved = await chrome.storage.local.get([
+      KEYS.bookmarks, KEYS.spaceGroups, KEYS.pendingSaves, KEYS.initialized, KEYS.tombstones
+    ]);
+    const list = Array.isArray(saved[KEYS.bookmarks]) ? saved[KEYS.bookmarks] : [];
+    const groups = (saved[KEYS.spaceGroups] && typeof saved[KEYS.spaceGroups] === 'object') ? saved[KEYS.spaceGroups] : {};
+    const tombstones = (saved[KEYS.tombstones] && typeof saved[KEYS.tombstones] === 'object') ? { ...saved[KEYS.tombstones] } : {};
+    const isInitialized = !!saved[KEYS.initialized] || list.length > 0;
 
-  let { space, group } = inferSpaceAndGroup(rawUrl, cleanTitle);
-  if (opts.space && opts.space !== 'auto' && DEFAULT_GROUP_BY_SPACE[opts.space]) {
-    space = opts.space;
-    group = (Array.isArray(groups[space]) && groups[space][0]) || DEFAULT_GROUP_BY_SPACE[space];
-  }
+    let { space, group } = inferSpaceAndGroup(rawUrl, cleanTitle);
+    if (opts.space && opts.space !== 'auto' && DEFAULT_GROUP_BY_SPACE[opts.space]) {
+      space = opts.space;
+      group = (Array.isArray(groups[space]) && groups[space][0]) || DEFAULT_GROUP_BY_SPACE[space];
+    }
 
-  const newKey = canonicalUrlKey(rawUrl);
-  const existing = list.find(b => canonicalUrlKey(b.url) === newKey);
-  if (existing) {
-    existing.quickSavedAt = Date.now();
-    if (opts.pin) existing.pinned = true;
+    const nowTs = Date.now();
+    const newKey = canonicalUrlKey(rawUrl);
+    if (newKey in tombstones) delete tombstones[newKey];
+
+    const existing = list.find(b => canonicalUrlKey(b.url) === newKey);
+    if (existing) {
+      existing.quickSavedAt = nowTs;
+      existing.updatedAt = nowTs;
+      if (opts.pin) existing.pinned = true;
+      await chrome.storage.local.set({
+        [KEYS.bookmarks]: list,
+        [KEYS.tombstones]: tombstones,
+        [KEYS.updatedAt]: nowTs,
+        [KEYS.lastQuickSave]: { title: existing.title, space: existing.space, group: existing.group, existed: true, savedAt: nowTs }
+      });
+      return {
+        existed: true,
+        bmId: existing.id,
+        needIconCache: !existing.customIcon || /^https?:\/\//i.test(existing.customIcon)
+      };
+    }
+
+    const fallbackDesc = `${cleanTitle} (${host || 'Web'}) 快速收藏站点`;
+    const newBm = {
+      id: generateId('bm'),
+      space,
+      group,
+      title: cleanTitle,
+      url: rawUrl,
+      desc: fallbackDesc,
+      quickSavedAt: nowTs,
+      updatedAt: nowTs,
+      ...(opts.pin ? { pinned: true } : {}),
+      ...(favIconUrl && /^https?:\/\//i.test(favIconUrl) ? { customIcon: favIconUrl } : {})
+    };
+
+    if (!isInitialized && list.length === 0) {
+      const pending = Array.isArray(saved[KEYS.pendingSaves]) ? saved[KEYS.pendingSaves] : [];
+      pending.unshift(newBm);
+      await chrome.storage.local.set({
+        [KEYS.pendingSaves]: pending,
+        [KEYS.tombstones]: tombstones,
+        [KEYS.lastQuickSave]: { title: cleanTitle, space, group, existed: false, savedAt: nowTs }
+      });
+      return { existed: false, pendingOnly: true, bmId: newBm.id, fallbackDesc };
+    }
+
+    list.unshift(newBm);
+    if (!Array.isArray(groups[space])) groups[space] = [];
+    if (!groups[space].includes(group)) groups[space].push(group);
+
     await chrome.storage.local.set({
       [KEYS.bookmarks]: list,
-      ws_v11_last_quick_save: { title: existing.title, space: existing.space, group: existing.group, existed: true, savedAt: Date.now() }
+      [KEYS.spaceGroups]: groups,
+      [KEYS.tombstones]: tombstones,
+      [KEYS.updatedAt]: nowTs,
+      [KEYS.initialized]: true,
+      [KEYS.lastQuickSave]: { title: cleanTitle, space, group, existed: false, savedAt: nowTs }
     });
+    return { existed: false, pendingOnly: false, bmId: newBm.id, fallbackDesc };
+  });
+
+  if (!actionResult) return;
+
+  if (actionResult.existed) {
     flashBadge('已存', '#f59e0b');
-    if (!existing.customIcon || /^https?:\/\//i.test(existing.customIcon)) {
-      cacheQuickSaveIconBg(existing.id, rawUrl, favIconUrl);
+    triggerBackgroundPush(false);
+    if (actionResult.needIconCache) {
+      cacheQuickSaveIconBg(actionResult.bmId, rawUrl, favIconUrl);
     }
     return;
   }
 
-  const nowTs = Date.now();
-  const fallbackDesc = `${cleanTitle} (${host || 'Web'}) 快速收藏站点`;
-  const newBm = {
-    id: 'bm_' + nowTs,
-    space,
-    group,
-    title: cleanTitle,
-    url: rawUrl,
-    desc: fallbackDesc,
-    pinned: !!opts.pin || undefined,
-    quickSavedAt: nowTs,
-    customIcon: favIconUrl && /^https?:\/\//i.test(favIconUrl) ? favIconUrl : undefined
-  };
-
-  if (list.length === 0) {
-    const pending = Array.isArray(saved[KEYS.pendingSaves]) ? saved[KEYS.pendingSaves] : [];
-    pending.unshift(newBm);
-    await chrome.storage.local.set({ [KEYS.pendingSaves]: pending });
-    flashBadge('✓', '#10b981');
-    enrichSavedBookmarkMetadata(newBm.id, rawUrl, fallbackDesc, isRawUrlTitle);
-    cacheQuickSaveIconBg(newBm.id, rawUrl, favIconUrl);
-    return;
-  }
-
-  list.unshift(newBm);
-  if (!Array.isArray(groups[space])) groups[space] = [];
-  if (!groups[space].includes(group)) groups[space].push(group);
-
-  await chrome.storage.local.set({
-    [KEYS.bookmarks]: list,
-    [KEYS.spaceGroups]: groups,
-    [KEYS.updatedAt]: nowTs,
-    ws_v11_last_quick_save: { title: cleanTitle, space, group, existed: false, savedAt: nowTs }
-  });
-
   flashBadge('✓', '#10b981');
-  triggerBackgroundPush(false);
-  enrichSavedBookmarkMetadata(newBm.id, rawUrl, fallbackDesc, isRawUrlTitle);
-  cacheQuickSaveIconBg(newBm.id, rawUrl, favIconUrl);
+  if (!actionResult.pendingOnly) {
+    triggerBackgroundPush(false);
+  }
+  enrichSavedBookmarkMetadata(actionResult.bmId, rawUrl, actionResult.fallbackDesc, isRawUrlTitle);
+  cacheQuickSaveIconBg(actionResult.bmId, rawUrl, favIconUrl);
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -397,24 +473,17 @@ chrome.commands.onCommand.addListener(async command => {
   if (tab?.url) quickSaveUrl(tab.url, tab.title || '', tab.favIconUrl || '', { space: 'auto', pin: false });
 });
 
-// ==================== 3. 地址栏 ws 直搜书签（支持拼音首字母 + 多词空格 AND 匹配） ====================
-function escapeXml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
+// ==================== 3. 地址栏 ws 直搜书签 ====================
 chrome.omnibox.setDefaultSuggestion({
   description: '⚡ 在个人效率工作台中搜索书签（支持拼音首字母与多词空格组合）: <match>%s</match>'
 });
 
 chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
+  const reqSeq = ++omniboxSearchSeq;
   const rawQ = (text || '').trim().toLowerCase();
   const tokens = rawQ ? rawQ.split(/\s+/).filter(Boolean) : [];
   const saved = await chrome.storage.local.get([KEYS.bookmarks, KEYS.recentVisits]);
+  if (reqSeq !== omniboxSearchSeq) return;
   const bms = Array.isArray(saved[KEYS.bookmarks]) ? saved[KEYS.bookmarks] : [];
   const visits = Array.isArray(saved[KEYS.recentVisits]) ? saved[KEYS.recentVisits] : [];
   const visitCountMap = new Map(visits.map(v => [v.id, v.count || 1]));
@@ -444,7 +513,7 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
           if (desc.includes(tk) || group.includes(tk)) tkScore += 35;
           else if (descPy.includes(tk) || groupPy.includes(tk)) tkScore += 25;
 
-          if (tkScore === 0) return null; // 多词严格 AND 匹配
+          if (tkScore === 0) return null;
           score += tkScore;
         }
         score += Math.min(50, (visitCountMap.get(b.id) || 0) * 5) + (b.pinned ? 15 : 0);
@@ -452,13 +521,19 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
       return score > 0 ? { b, score } : null;
     })
     .filter(Boolean)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
+    .sort((a, b) => b.score - a.score);
 
-  const suggestions = scored.map(({ b }) => ({
-    content: b.url,
-    description: `${escapeXml(b.title)} <dim>- ${escapeXml((b.desc || b.url).slice(0, 60))}</dim>`
-  }));
+  const seenUrls = new Set();
+  const suggestions = [];
+  for (const { b } of scored) {
+    if (!b.url || seenUrls.has(b.url)) continue;
+    seenUrls.add(b.url);
+    suggestions.push({
+      content: b.url,
+      description: `${escapeXml(b.title)} <dim>- ${escapeXml((b.desc || b.url).slice(0, 60))}</dim>`
+    });
+    if (suggestions.length >= 8) break;
+  }
   suggest(suggestions);
 });
 
@@ -479,30 +554,119 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
   }
 });
 
-// ==================== 4. GitHub 私有 Gist 后台可靠推送与冲突保护 ====================
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
+// ==================== 4. 后台真实 HTTP 状态码四级死链体检引擎 ====================
+export async function probeLinkStatus(url, parentSignal) {
+  if (!url || isPrivateHostOrUrl(url)) {
+    return { level: 'skipped', status: 0, reason: '内网跳过', ms: 0 };
   }
-}
 
-function buildGhHeaders(token) {
-  return {
-    Accept: 'application/vnd.github+json',
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-    'X-GitHub-Api-Version': '2022-11-28'
+  const doProbe = async (method, timeoutMs) => {
+    const tCtrl = new AbortController();
+    const timer = setTimeout(() => tCtrl.abort(), timeoutMs);
+    const onAbort = () => tCtrl.abort();
+    parentSignal?.addEventListener('abort', onAbort, { once: true });
+    const startMs = Date.now();
+    try {
+      const res = await fetch(url, {
+        method,
+        redirect: 'follow',
+        cache: 'no-store',
+        signal: tCtrl.signal
+      });
+      const elapsed = Date.now() - startMs;
+      if (method === 'GET') {
+        try { await res.body?.cancel(); } catch {}
+      }
+      return { ok: true, status: res.status, ms: elapsed };
+    } catch (err) {
+      return { ok: false, error: err?.name === 'AbortError' ? '请求超时' : '连接失败', ms: Date.now() - startMs };
+    } finally {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener('abort', onAbort);
+    }
   };
+
+  let res = await doProbe('HEAD', 6000);
+  if (parentSignal?.aborted) return { level: 'aborted', status: 0, reason: '已停止', ms: res.ms };
+
+  if (res.ok && [400, 403, 405, 501].includes(res.status)) {
+    const getRes = await doProbe('GET', 6500);
+    if (parentSignal?.aborted) return { level: 'aborted', status: 0, reason: '已停止', ms: getRes.ms };
+    res = getRes;
+  } else if (!res.ok && res.error !== '请求超时') {
+    const getRes = await doProbe('GET', 6000);
+    if (parentSignal?.aborted) return { level: 'aborted', status: 0, reason: '已停止', ms: getRes.ms };
+    if (getRes.ok) res = getRes;
+  }
+
+  if (!res.ok) {
+    return { level: 'dead', status: 0, reason: res.error || '无法连通', ms: res.ms };
+  }
+
+  const st = res.status;
+  if (st >= 200 && st < 400) {
+    if (res.ms >= 3000) return { level: 'slow', status: st, reason: `HTTP ${st}`, ms: res.ms };
+    return { level: 'ok', status: st, reason: `HTTP ${st}`, ms: res.ms };
+  }
+  if ([401, 403, 429, 503].includes(st)) {
+    return { level: 'verify', status: st, reason: `HTTP ${st} 拦截`, ms: res.ms };
+  }
+  return { level: 'dead', status: st, reason: `HTTP ${st}`, ms: res.ms };
 }
 
-async function executeBackgroundPush(force = false) {
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'ws-link-check') return;
+  let controller = null;
+  let disconnected = false;
+
+  const safePost = msg => {
+    if (disconnected) return;
+    try { port.postMessage(msg); } catch { disconnected = true; }
+  };
+
+  port.onDisconnect.addListener(() => {
+    disconnected = true;
+    controller?.abort();
+  });
+
+  port.onMessage.addListener(async msg => {
+    if (msg?.type === 'ABORT') {
+      controller?.abort();
+      return;
+    }
+    if (msg?.type !== 'START' || !Array.isArray(msg.bookmarks)) return;
+
+    controller?.abort();
+    controller = new AbortController();
+    const myCtrl = controller;
+    const queue = [...msg.bookmarks];
+    const total = queue.length;
+    let checked = 0;
+
+    const runWorker = async () => {
+      while (queue.length > 0 && !myCtrl.signal.aborted && !disconnected) {
+        const bm = queue.shift();
+        if (!bm) continue;
+        const result = await probeLinkStatus(bm.url, myCtrl.signal);
+        if (myCtrl.signal.aborted || disconnected) break;
+        checked++;
+        safePost({ type: 'ITEM', bm, result, checked, total });
+      }
+    };
+
+    await Promise.all(Array.from({ length: 6 }, runWorker));
+    if (!myCtrl.signal.aborted && !disconnected) {
+      safePost({ type: 'DONE', checked, total });
+    }
+  });
+});
+
+// ==================== 5. GitHub 私有 Gist 后台可靠推送（双文件分离 + Alarms 补推） ====================
+export async function executeBackgroundPush(force = false) {
   const allKeys = [
     KEYS.bookmarks, KEYS.spaceGroups, KEYS.todos, KEYS.memo, KEYS.updatedAt, KEYS.ghSync,
-    KEYS.theme, KEYS.accent, KEYS.rightPanel, KEYS.city, KEYS.collapsed, KEYS.customLogo
+    KEYS.theme, KEYS.accent, KEYS.rightPanel, KEYS.city, KEYS.collapsed, KEYS.customLogo,
+    KEYS.tombstones
   ];
   const saved = await chrome.storage.local.get(allKeys);
   const cfg = saved[KEYS.ghSync];
@@ -533,53 +697,47 @@ async function executeBackgroundPush(force = false) {
           const remoteData = JSON.parse(content);
           const remoteUpdatedAt = typeof remoteData.updatedAt === 'number' ? remoteData.updatedAt : 0;
           const lastKnownRemote = typeof cfg.lastRemoteUpdatedAt === 'number' ? cfg.lastRemoteUpdatedAt : 0;
+          const remoteHasBookmarks = Array.isArray(remoteData.bookmarks) && remoteData.bookmarks.length > 0;
+          const localUpdatedAt = typeof saved[KEYS.updatedAt] === 'number' ? saved[KEYS.updatedAt] : 0;
 
-          if (lastKnownRemote > 0 && remoteUpdatedAt > lastKnownRemote) {
+          const hasRemoteUpdate = lastKnownRemote > 0 && remoteUpdatedAt > lastKnownRemote;
+          const isUnlinkedGistWithData = lastKnownRemote === 0 && remoteHasBookmarks && (!cfg.lastSyncAt || remoteUpdatedAt > localUpdatedAt);
+
+          if (hasRemoteUpdate || isUnlinkedGistWithData) {
             await chrome.storage.local.set({
               [KEYS.syncConflict]: {
                 detectedAt: Date.now(),
                 remoteUpdatedAt,
-                localUpdatedAt: saved[KEYS.updatedAt] || Date.now()
+                localUpdatedAt: localUpdatedAt || Date.now()
               }
             });
+            await markSyncMeta({ dirty: false, retryCount: 0, lastError: '' });
+            await clearRetryAlarm();
             return { ok: false, conflict: true, remoteUpdatedAt };
           }
         }
       }
-    } catch {
-      // 网络波动交由后续 PATCH 统一上报
-    }
+    } catch {}
   }
 
-  const cleanBookmarks = rawBms.map(b => {
-    const item = { id: b.id, space: b.space, group: b.group, title: b.title, url: b.url, desc: b.desc };
-    if (b.pinned) item.pinned = true;
-    if (b.quickSavedAt) item.quickSavedAt = b.quickSavedAt;
-    if (b.customIcon && b.customIcon.length <= 40000) item.customIcon = b.customIcon;
-    return item;
-  });
-
-  const customLogo = typeof saved[KEYS.customLogo] === 'string' && saved[KEYS.customLogo].length <= 200000
-    ? saved[KEYS.customLogo]
-    : '';
-
   const nowTs = Math.max(Date.now(), typeof saved[KEYS.updatedAt] === 'number' ? saved[KEYS.updatedAt] : 0);
-  const payload = {
-    version: 11.1,
-    updatedAt: nowTs,
+  const tombstones = pruneTombstones(saved[KEYS.tombstones], nowTs);
+  const files = buildGistFilesPayload({
+    rawBms,
     spaceGroups: saved[KEYS.spaceGroups] || {},
-    bookmarks: cleanBookmarks,
-    todos: Array.isArray(saved[KEYS.todos]) ? saved[KEYS.todos] : [],
-    memo: typeof saved[KEYS.memo] === 'string' ? saved[KEYS.memo] : '',
+    todos: saved[KEYS.todos],
+    memo: saved[KEYS.memo],
+    tombstones,
+    nowTs,
     settings: {
       theme: saved[KEYS.theme] || 'dark',
       accent: saved[KEYS.accent] || 'indigo',
       rightPanel: saved[KEYS.rightPanel] || 'expanded',
-      city: saved[KEYS.city] || '39.9042,116.4074,北京',
+      city: saved[KEYS.city] || DEFAULT_WEATHER_CITY,
       collapsed: saved[KEYS.collapsed] || {},
-      customLogo
+      customLogo: saved[KEYS.customLogo] || ''
     }
-  };
+  });
 
   const isCreate = !cfg.gistId;
   const endpoint = isCreate
@@ -587,8 +745,8 @@ async function executeBackgroundPush(force = false) {
     : `https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`;
 
   const body = {
-    description: 'Personal Workspace OS - Private Sync Data (v11.1)',
-    files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } }
+    description: 'Personal Workspace OS - Private Sync Data (v11.2)',
+    files
   };
   if (isCreate) body.public = false;
 
@@ -599,15 +757,17 @@ async function executeBackgroundPush(force = false) {
   }, 12000);
 
   if (!res.ok) {
-    if (res.status === 401) throw new Error('Token 无效或已过期');
-    if (res.status === 404) throw new Error('Gist ID 不存在或无权限');
+    if (res.status === 401) throw Object.assign(new Error('Token 无效或已过期'), { fatal: true });
+    if (res.status === 404) throw Object.assign(new Error('Gist ID 不存在或无权限'), { fatal: true });
     throw new Error(`HTTP ${res.status}`);
   }
 
   const json = await res.json();
+  const latestSaved = await chrome.storage.local.get([KEYS.ghSync]);
+  const latestCfg = (latestSaved[KEYS.ghSync] && typeof latestSaved[KEYS.ghSync] === 'object') ? latestSaved[KEYS.ghSync] : cfg;
   const nextCfg = {
-    ...cfg,
-    gistId: isCreate && json.id ? json.id : cfg.gistId,
+    ...latestCfg,
+    gistId: isCreate && json.id ? json.id : (latestCfg.gistId || cfg.gistId),
     lastSyncAt: Date.now(),
     lastRemoteUpdatedAt: nowTs
   };
@@ -615,20 +775,24 @@ async function executeBackgroundPush(force = false) {
   await chrome.storage.local.set({
     [KEYS.ghSync]: nextCfg,
     [KEYS.updatedAt]: nowTs,
+    [KEYS.tombstones]: tombstones,
     [KEYS.syncConflict]: null
   });
+  await markSyncMeta({ dirty: false, dirtyAt: 0, retryCount: 0, lastError: '' });
+  await clearRetryAlarm();
 
   return { ok: true, isCreate, gistId: nextCfg.gistId, updatedAt: nowTs };
 }
 
-async function triggerBackgroundPush(force = false) {
-  if (bgSyncing) {
+export async function triggerBackgroundPush(force = false) {
+  await markSyncMeta({ dirty: true, dirtyAt: Date.now() });
+
+  if (!(await acquireSessionLock())) {
     bgPendingPush = true;
     if (force) bgForceNext = true;
     return { ok: true, queued: true };
   }
 
-  bgSyncing = true;
   let lastResult = { ok: false };
   let currentForce = force;
 
@@ -640,9 +804,19 @@ async function triggerBackgroundPush(force = false) {
       currentForce = bgForceNext;
     } while (bgPendingPush && !lastResult.conflict);
   } catch (err) {
-    lastResult = { ok: false, error: err?.message || '请检查网络' };
+    const errMsg = err?.message || '请检查网络';
+    lastResult = { ok: false, error: errMsg };
+    if (!err?.fatal) {
+      const saved = await chrome.storage.local.get([KEYS.syncMeta]);
+      const retryCount = (saved[KEYS.syncMeta]?.retryCount || 0) + 1;
+      await markSyncMeta({ dirty: retryCount <= 5, retryCount, lastError: errMsg });
+      if (retryCount <= 5) await scheduleRetryAlarm(retryCount);
+    } else {
+      await markSyncMeta({ dirty: false, lastError: errMsg });
+      await clearRetryAlarm();
+    }
   } finally {
-    bgSyncing = false;
+    await releaseSessionLock();
   }
 
   return lastResult;

@@ -44,7 +44,7 @@
               <p class="text-[11px] text-slate-400 dark:text-slate-500">Creator &amp; Dev OS</p>
             </div>
           </div>
-          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60">v11.1</span>
+          <span class="text-[10px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60">v11.2</span>
         </div>
       </div>
 
@@ -660,12 +660,30 @@
     </div>
   </div>
 
+  <!-- ==================== 弹窗 5：统一非阻塞确认 / 输入对话框 ==================== -->
+  <div id="dialogModal" class="modal-backdrop modal-backdrop-top hidden">
+    <div class="specular-card rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-3.5">
+      <div class="flex justify-between items-center gap-2">
+        <h3 id="dialogModalTitle" class="text-base font-bold text-slate-800 dark:text-slate-100">确认操作</h3>
+        <button type="button" id="closeDialogModalBtn" class="modal-close-btn">✕</button>
+      </div>
+      <p id="dialogModalMessage" class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line"></p>
+      <form id="dialogModalForm" class="space-y-3">
+        <input type="text" id="dialogModalInput" class="hidden field-input text-sm" autocomplete="off">
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" id="cancelDialogModalBtn" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium transition">取消</button>
+          <button type="submit" id="confirmDialogModalBtn" class="px-4 py-2 rounded-xl theme-solid-bg text-white text-xs font-semibold shadow-sm hover:opacity-90 transition">确定</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast 消息浮层 -->
   <div id="toastContainer" class="fixed bottom-20 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- 纯本地离线脚本加载 -->
   <script src="js/bookmarks-data.js"></script>
   <script src="js/default-bookmarks.js"></script>
-  <script src="js/app.js"></script>
+  <script type="module" src="js/app/main.js"></script>
 </body>
 </html>
